@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { Download, Filter, Calendar, MapPin, Package, TrendingUp, AlertTriangle } from 'lucide-react';
+import { Download, Filter, Calendar, MapPin, Package, TrendingUp, AlertTriangle, ChefHat } from 'lucide-react';
 
 // Helper functions
 const formatIDR = (num) =>
@@ -441,6 +441,9 @@ export function DistributionReport() {
     doc.save(`laporan-distribusi-${new Date().toISOString().split('T')[0]}.pdf`);
   };
 
+  
+
+
   useEffect(() => {
     fetchDistributionData();
   }, [filters]);
@@ -852,6 +855,439 @@ export function SalesReport() {
   );
 }
 
+
+// Laporan Penggunaan Bahan Baku
+export function RawMaterialUsageReport() {
+  const { getSupabaseWithAuth } = useAuth();
+  const [data, setData] = useState([]);
+  const [summary, setSummary] = useState({});
+  const [loading, setLoading] = useState(false);
+  const [filters, setFilters] = useState({
+    startDate: '',
+    endDate: '',
+    viewBy: 'production' // 'production' or 'ingredient'
+  });
+
+  const fetchRawMaterialUsage = async () => {
+    setLoading(true);
+    const supabase = getSupabaseWithAuth();
+
+    try {
+      let query = supabase
+        .from('productions')
+        .select(`
+          id,
+          production_date,
+          batch_count,
+          total_output,
+          total_cost,
+          recipe_id (
+            id,
+            cake_id (
+              id,
+              name
+            ),
+            recipe_ingredients (
+              quantity_needed,
+              ingredient_id (
+                id,
+                name,
+                unit,
+                current_stock
+              )
+            )
+          )
+        `)
+        .order('production_date', { ascending: false });
+
+      if (filters.startDate) {
+        query = query.gte('production_date', filters.startDate);
+      }
+      if (filters.endDate) {
+        query = query.lte('production_date', filters.endDate + 'T23:59:59');
+      }
+
+      const { data: productions, error } = await query;
+
+      if (error) throw error;
+
+      // Process data based on view type
+      let processedData = [];
+      const summaryData = {
+        totalProductions: 0,
+        totalBatches: 0,
+        totalOutput: 0,
+        totalCost: 0,
+        ingredientUsage: {}
+      };
+
+      if (filters.viewBy === 'production') {
+        // View by production - show each production with ingredient details
+        productions.forEach(prod => {
+          const productionItem = {
+            id: prod.id,
+            productionDate: prod.production_date,
+            cakeName: prod.recipe_id?.cake_id?.name || 'Unknown',
+            batchCount: prod.batch_count,
+            totalOutput: prod.total_output,
+            totalCost: prod.total_cost,
+            ingredients: []
+          };
+
+          // Calculate ingredient usage for this production
+          prod.recipe_id?.recipe_ingredients?.forEach(ri => {
+            const totalNeeded = ri.quantity_needed * prod.batch_count;
+            productionItem.ingredients.push({
+              name: ri.ingredient_id?.name,
+              unit: ri.ingredient_id?.unit,
+              quantityNeeded: totalNeeded,
+              currentStock: ri.ingredient_id?.current_stock
+            });
+
+            // Update summary
+            if (!summaryData.ingredientUsage[ri.ingredient_id?.id]) {
+              summaryData.ingredientUsage[ri.ingredient_id?.id] = {
+                name: ri.ingredient_id?.name,
+                unit: ri.ingredient_id?.unit,
+                totalUsed: 0,
+                currentStock: ri.ingredient_id?.current_stock
+              };
+            }
+            summaryData.ingredientUsage[ri.ingredient_id?.id].totalUsed += totalNeeded;
+          });
+
+          processedData.push(productionItem);
+
+          // Update summary totals
+          summaryData.totalProductions++;
+          summaryData.totalBatches += prod.batch_count;
+          summaryData.totalOutput += prod.total_output;
+          summaryData.totalCost += prod.total_cost;
+        });
+      } else {
+        // View by ingredient - aggregate usage across all productions
+        const ingredientMap = {};
+
+        productions.forEach(prod => {
+          prod.recipe_id?.recipe_ingredients?.forEach(ri => {
+            const ingredientId = ri.ingredient_id?.id;
+            const totalNeeded = ri.quantity_needed * prod.batch_count;
+
+            if (!ingredientMap[ingredientId]) {
+              ingredientMap[ingredientId] = {
+                id: ingredientId,
+                name: ri.ingredient_id?.name,
+                unit: ri.ingredient_id?.unit,
+                totalUsed: 0,
+                currentStock: ri.ingredient_id?.current_stock,
+                usageInProductions: 0,
+                cakesProduced: new Set()
+              };
+            }
+
+            ingredientMap[ingredientId].totalUsed += totalNeeded;
+            ingredientMap[ingredientId].usageInProductions++;
+            ingredientMap[ingredientId].cakesProduced.add(prod.recipe_id?.cake_id?.name);
+          });
+
+          // Update summary totals
+          summaryData.totalProductions++;
+          summaryData.totalBatches += prod.batch_count;
+          summaryData.totalOutput += prod.total_output;
+          summaryData.totalCost += prod.total_cost;
+        });
+
+        // Convert to array and calculate percentages
+        processedData = Object.values(ingredientMap).map(ing => ({
+          ...ing,
+          cakesProduced: Array.from(ing.cakesProduced).join(', '),
+          usagePercentage: ((ing.totalUsed / ing.currentStock) * 100).toFixed(1)
+        }));
+
+        summaryData.ingredientUsage = ingredientMap;
+      }
+
+      setData(processedData);
+      setSummary(summaryData);
+
+    } catch (error) {
+      console.error('Error fetching raw material usage data:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const exportToPDF = () => {
+    const doc = new jsPDF();
+    
+    doc.setFontSize(16);
+    doc.text('LAPORAN PENGGUNAAN BAHAN BAKU', 105, 15, { align: 'center' });
+    
+    doc.setFontSize(10);
+    let dateRange = 'Semua Tanggal';
+    if (filters.startDate && filters.endDate) {
+      dateRange = `${formatDate(filters.startDate)} - ${formatDate(filters.endDate)}`;
+    }
+    doc.text(`Periode: ${dateRange} | View By: ${filters.viewBy === 'production' ? 'Produksi' : 'Bahan'}`, 105, 22, { align: 'center' });
+
+    // Summary
+    doc.text(`Total Produksi: ${summary.totalProductions} | Total Batch: ${summary.totalBatches} | Output: ${summary.totalOutput.toLocaleString()} pcs | Total Biaya: ${formatIDR(summary.totalCost)}`, 14, 32);
+
+    let yPos = 40;
+
+    if (filters.viewBy === 'production') {
+      // Table for production view
+      data.forEach((prod, index) => {
+        if (yPos > 250) {
+          doc.addPage();
+          yPos = 20;
+        }
+
+        // Production header
+        doc.setFontSize(11);
+        doc.setFont(undefined, 'bold');
+        doc.text(`${formatDate(prod.productionDate)} - ${prod.cakeName} (${prod.batchCount} batch, ${prod.totalOutput} pcs)`, 14, yPos);
+        yPos += 7;
+
+        // Ingredients table
+        const tableData = prod.ingredients.map(ing => [
+          ing.name,
+          ing.quantityNeeded.toString(),
+          ing.unit,
+          ing.currentStock.toString()
+        ]);
+
+        autoTable(doc, {
+          startY: yPos,
+          head: [['Bahan', 'Jumlah Digunakan', 'Unit', 'Stok Saat Ini']],
+          body: tableData,
+          styles: { fontSize: 8 },
+          headStyles: { fillColor: [59, 130, 246] },
+          margin: { left: 14, right: 14 }
+        });
+
+        yPos = doc.lastAutoTable.finalY + 10;
+      });
+    } else {
+      // Table for ingredient view
+      const tableData = data.map(ing => [
+        ing.name,
+        ing.totalUsed.toString(),
+        ing.unit,
+        ing.currentStock.toString(),
+        ing.usagePercentage + '%',
+        ing.cakesProduced
+      ]);
+
+      autoTable(doc, {
+        startY: yPos,
+        head: [['Bahan', 'Total Digunakan', 'Unit', 'Stok Saat Ini', '% Penggunaan', 'Digunakan Untuk']],
+        body: tableData,
+        styles: { fontSize: 8 },
+        headStyles: { fillColor: [16, 185, 129] }
+      });
+    }
+
+    const pageCount = doc.internal.getNumberOfPages();
+    for (let i = 1; i <= pageCount; i++) {
+      doc.setPage(i);
+      doc.setFontSize(8);
+      doc.text(`Generated on ${new Date().toLocaleDateString('id-ID')} - Page ${i} of ${pageCount}`, 105, doc.internal.pageSize.height - 10, { align: 'center' });
+    }
+
+    doc.save(`laporan-bahan-baku-${new Date().toISOString().split('T')[0]}.pdf`);
+  };
+
+  useEffect(() => {
+    fetchRawMaterialUsage();
+  }, [filters]);
+
+  return (
+    <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+      <div className="p-6 border-b border-gray-200">
+        <div className="flex justify-between items-center mb-4">
+          <h2 className="text-xl font-semibold text-gray-800 flex items-center">
+            <ChefHat className="mr-2 text-orange-600" size={24} />
+            Laporan Penggunaan Bahan Baku
+          </h2>
+          <button
+            onClick={exportToPDF}
+            disabled={loading || data.length === 0}
+            className="flex items-center px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <Download size={16} className="mr-2" />
+            Export PDF
+          </button>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Dari Tanggal</label>
+            <input
+              type="date"
+              value={filters.startDate}
+              onChange={(e) => setFilters(prev => ({ ...prev, startDate: e.target.value }))}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Sampai Tanggal</label>
+            <input
+              type="date"
+              value={filters.endDate}
+              onChange={(e) => setFilters(prev => ({ ...prev, endDate: e.target.value }))}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500"
+            />
+          </div>
+          {/* <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Tampilkan Berdasarkan</label>
+            <select
+              value={filters.viewBy}
+              onChange={(e) => setFilters(prev => ({ ...prev, viewBy: e.target.value }))}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500"
+            >
+              <option value="production">Per Produksi</option>
+              <option value="ingredient">Per Bahan</option>
+            </select>
+          </div> */}
+        </div>
+
+        {/* Summary Cards */}
+        {data.length > 0 && (
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mt-6">
+            <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
+              <div className="text-blue-800 font-semibold text-sm">Total Produksi</div>
+              <div className="text-xl font-bold text-blue-900">{summary.totalProductions}</div>
+            </div>
+            <div className="bg-green-50 p-4 rounded-lg border border-green-200">
+              <div className="text-green-800 font-semibold text-sm">Total Batch</div>
+              <div className="text-xl font-bold text-green-900">{summary.totalBatches}</div>
+            </div>
+            <div className="bg-purple-50 p-4 rounded-lg border border-purple-200">
+              <div className="text-purple-800 font-semibold text-sm">Total Output</div>
+              <div className="text-xl font-bold text-purple-900">{summary.totalOutput.toLocaleString()} pcs</div>
+            </div>
+            <div className="bg-orange-50 p-4 rounded-lg border border-orange-200">
+              <div className="text-orange-800 font-semibold text-sm">Total Biaya</div>
+              <div className="text-xl font-bold text-orange-900">{formatIDR(summary.totalCost)}</div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className="p-6">
+        {loading ? (
+          <div className="text-center py-8">
+            <div className="text-gray-500">Memuat data penggunaan bahan baku...</div>
+          </div>
+        ) : data.length === 0 ? (
+          <div className="text-center py-8">
+            <ChefHat size={48} className="mx-auto text-gray-400 mb-2" />
+            <div className="text-gray-500">Tidak ada data penggunaan bahan baku</div>
+          </div>
+        ) : filters.viewBy === 'production' ? (
+          // View by Production
+          <div className="space-y-6">
+            {data.map((production) => (
+              <div key={production.id} className="border border-gray-200 rounded-lg">
+                <div className="bg-gray-50 px-4 py-3 border-b border-gray-200">
+                  <div className="flex justify-between items-center">
+                    <h3 className="font-semibold text-gray-800">
+                      {formatDate(production.productionDate)} - {production.cakeName}
+                    </h3>
+                    <div className="text-sm text-gray-600">
+                      Batch: {production.batchCount} | Output: {production.totalOutput} pcs | Biaya: {formatIDR(production.totalCost)}
+                    </div>
+                  </div>
+                </div>
+                <div className="p-4">
+                  <table className="w-full text-sm text-left">
+                    <thead className="bg-gray-50 text-gray-700">
+                      <tr>
+                        <th className="px-4 py-2 font-medium">Bahan Baku</th>
+                        <th className="px-4 py-2 font-medium text-right">Jumlah Digunakan</th>
+                        <th className="px-4 py-2 font-medium">Unit</th>
+                        {/* <th className="px-4 py-2 font-medium text-right">Stok Saat Ini</th> */}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-200">
+                      {production.ingredients.map((ingredient, idx) => (
+                        <tr key={idx} className="hover:bg-gray-50">
+                          <td className="px-4 py-2 font-medium">{ingredient.name}</td>
+                          <td className="px-4 py-2 text-right text-blue-600">
+                            {ingredient.quantityNeeded.toLocaleString()}
+                          </td>
+                          <td className="px-4 py-2">{ingredient.unit}</td>
+                          <td className="px-4 py-2 text-right">
+                            {/* <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                              ingredient.currentStock < ingredient.quantityNeeded 
+                                ? 'bg-red-100 text-red-800' 
+                                : 'bg-green-100 text-green-800'
+                            }`}>
+                              {ingredient.currentStock.toLocaleString()}
+                            </span> */}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          // View by Ingredient
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm text-left">
+              <thead className="bg-gray-50 text-gray-700">
+                <tr>
+                  <th className="px-4 py-3 font-medium">Bahan Baku</th>
+                  <th className="px-4 py-3 font-medium text-right">Total Digunakan</th>
+                  <th className="px-4 py-3 font-medium">Unit</th>
+                  <th className="px-4 py-3 font-medium text-right">Stok Saat Ini</th>
+                  <th className="px-4 py-3 font-medium text-right">% Penggunaan</th>
+                  <th className="px-4 py-3 font-medium">Digunakan Untuk</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-200">
+                {data.map((ingredient, index) => (
+                  <tr key={index} className="hover:bg-gray-50">
+                    <td className="px-4 py-3 font-medium">{ingredient.name}</td>
+                    <td className="px-4 py-3 text-right text-blue-600 font-medium">
+                      {ingredient.totalUsed.toLocaleString()}
+                    </td>
+                    <td className="px-4 py-3">{ingredient.unit}</td>
+                    <td className="px-4 py-3 text-right">
+                      {ingredient.currentStock.toLocaleString()}
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                        parseFloat(ingredient.usagePercentage) > 50 
+                          ? 'bg-yellow-100 text-yellow-800' 
+                          : parseFloat(ingredient.usagePercentage) > 80 
+                            ? 'bg-red-100 text-red-800'
+                            : 'bg-green-100 text-green-800'
+                      }`}>
+                        {ingredient.usagePercentage}%
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-sm text-gray-600">
+                      {ingredient.cakesProduced}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+
+
+
 // Main Reports Component dengan Tab
 export default function Reports() {
   const [activeTab, setActiveTab] = useState('production');
@@ -859,7 +1295,8 @@ export default function Reports() {
   const tabs = [
     { id: 'production', name: 'Produksi', component: <ProductionReport /> },
     { id: 'distribution', name: 'Distribusi', component: <DistributionReport /> },
-    { id: 'sales', name: 'Penjualan & Kerusakan', component: <SalesReport /> }
+    { id: 'sales', name: 'Penjualan & Kerusakan', component: <SalesReport /> },
+    { id: 'raw-material', name: 'Bahan Baku', component: <RawMaterialUsageReport /> }
   ];
 
   return (
