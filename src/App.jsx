@@ -181,7 +181,6 @@ import Recipes from './features/recipes/Recipes';
 import Productions from './features/productions/Productions';
 import Distributions from './features/distributions/Distributions';
 import Reports from './features/reports/Reports';
-import Sales from './features/sales/sales';
 
 // 🔑 Wrapper untuk Layout yang inject onLogout
 function AuthenticatedLayout() {
@@ -211,7 +210,6 @@ function App() {
           <Route path="recipes" element={<Recipes />} />
           <Route path="productions" element={<Productions />} />
           <Route path="distributions" element={<Distributions />} />
-          <Route path="sales" element={<Sales />} />
           <Route path="reports" element={<Reports />} />
         </Route>
 
