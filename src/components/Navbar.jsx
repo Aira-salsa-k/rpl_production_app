@@ -10,7 +10,7 @@ export default function Navbar({ onLogout }) {
     { name: 'Recipes', path: '/recipes' },
     { name: 'Productions', path: '/productions' },
     { name: 'Distributions', path: '/distributions' },
-    { name: 'Sales', path: '/sales' },
+
     { name: 'Reports', path: '/reports' },
   ];
 

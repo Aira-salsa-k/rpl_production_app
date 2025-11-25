@@ -214,7 +214,7 @@
 //                 <Link to="/distributions" className={linkClass('/distributions')}>
 //                   Distribusi
 //                 </Link>
-//                 {/* <Link to="/sales" className={linkClass('/sales')}>
+
 //                   Penjualan
 //                 </Link> */}
 //               </div>
