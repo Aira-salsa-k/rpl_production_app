@@ -1,0 +1,195 @@
+
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+      <div className="bg-white rounded-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+        <div className="p-6 border-b">
+          <div className="flex justify-between items-center">
+            <h2 className="text-xl font-bold">Detail Kios - {kiosk.name}</h2>
+            <button onClick={onClose} className="text-gray-500 hover:text-gray-700">
+              <X size={24} />
+            </button>
+          </div>
+        </div>
+        
+        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Nama Kios *</label>
+              <input
+                type="text"
+                required
+                value={formData.name}
+                onChange={e => setFormData({...formData, name: e.target.value})}
+                className="w-full px-3 py-2 border rounded-lg"
+              />
+            </div>
+            
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Area *</label>
+              <select
+                required
+                value={formData.area}
+                onChange={e => setFormData({...formData, area: e.target.value})}
+                className="w-full px-3 py-2 border rounded-lg"
+              >
+                <option value="">Pilih Area</option>
+                {ROUTES.map(route => (
+                  <option key={route} value={route}>{route}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Alamat Singkat</label>
+            <input
+              type="text"
+              value={formData.address}
+              onChange={e => setFormData({...formData, address: e.target.value})}
+              className="w-full px-3 py-2 border rounded-lg"
+              placeholder="Jl. Contoh No. 123"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Alamat Detail</label>
+            <textarea
+              value={formData.detailed_address}
+              onChange={e => setFormData({...formData, detailed_address: e.target.value})}
+              rows={3}
+              className="w-full px-3 py-2 border rounded-lg"
+              placeholder="Detail alamat, patokan, dll."
+            />
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Contact Person</label>
+              <input
+                type="text"
+                value={formData.contact_person}
+                onChange={e => setFormData({...formData, contact_person: e.target.value})}
+                className="w-full px-3 py-2 border rounded-lg"
+                placeholder="Nama penanggung jawab"
+              />
+            </div>
+            
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Nomor Telepon</label>
+              <input
+                type="tel"
+                value={formData.phone_number}
+                onChange={e => setFormData({...formData, phone_number: e.target.value})}
+                className="w-full px-3 py-2 border rounded-lg"
+                placeholder="08xxx"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Google Maps Link</label>
+            <input
+              type="url"
+              value={formData.gmaps_link}
+              onChange={e => setFormData({...formData, gmaps_link: e.target.value})}
+              className="w-full px-3 py-2 border rounded-lg"
+              placeholder="https://maps.google.com/..."
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Catatan</label>
+            <textarea
+              value={formData.notes}
+              onChange={e => setFormData({...formData, notes: e.target.value})}
+              rows={2}
+              className="w-full px-3 py-2 border rounded-lg"
+              placeholder="Catatan khusus tentang kios ini..."
+            />
+          </div>
+
+          <div className="flex gap-2 pt-4">
+            <button
+              type="submit"
+              disabled={isSubmitting}
+              className="flex-1 bg-indigo-600 text-white py-2 rounded-lg font-bold hover:bg-indigo-700 disabled:bg-gray-400"
+            >
+              {isSubmitting ? 'Menyimpan...' : 'Simpan Perubahan'}
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
+            >
+              Batal
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+};
+
+// Update bagian form distribusi untuk menampilkan harga harian
+// Di dalam form distribusi, tambahkan informasi harga:
+<div className="bg-gray-50 p-3 rounded-lg border border-gray-200">
+  <div className="flex justify-between items-center mb-2">
+    <label className="block text-xs font-semibold text-gray-500 uppercase">3. Daftar Kue</label>
+    <span className="text-xs text-gray-500">
+      {items.filter(i => i.source === 'history').length} history, 
+      {items.filter(i => i.source === 'template').length} template
+    </span>
+  </div>
+  
+  {/* Tambahkan info harga harian */}
+  <div className="mb-2 p-2 bg-blue-50 rounded border border-blue-200">
+    <div className="text-xs text-blue-700 flex justify-between">
+      <span>Harga berdasarkan: {distDate}</span>
+      <button 
+        type="button" 
+        onClick={() => fetchDailyPrices(distDate)}
+        className="text-blue-600 hover:text-blue-800"
+      >
+        <RefreshCw size={12} />
+      </button>
+    </div>
+  </div>
+
+  <div className="flex gap-2 mb-3">
+    {/* ... existing manual input ... */}
+  </div>
+  
+  {items.map((item) => (
+    <div key={item.tempId} className="flex justify-between items-center bg-white px-3 py-2 rounded text-sm border border-gray-200 shadow-sm mb-2">
+      <div className="flex-1">
+        <div className="flex justify-between">
+          <span>{item.cake_name}</span>
+          <span className="text-xs text-gray-500">
+            Rp {getCakePrice(item.cake_id).toLocaleString()}
+          </span>
+        </div>
+        <span className={`text-xs ml-2 px-1 rounded ${
+          item.source === 'history' ? 'bg-blue-100 text-blue-600' : 
+          item.source === 'template' ? 'bg-orange-100 text-orange-600' : 
+          'bg-green-100 text-green-600'
+        }`}>
+          {item.source === 'history' ? 'History' : item.source === 'template' ? 'Template' : 'Manual'}
+        </span>
+      </div>
+      <div className="flex items-center gap-2">
+        <span className="font-bold">{item.quantity}</span>
+        <span className="text-xs text-green-600 font-bold">
+          Rp {(item.quantity * getCakePrice(item.cake_id)).toLocaleString()}
+        </span>
+        <button 
+          type="button" 
+          onClick={() => setItems(items.filter(i => i.tempId !== item.tempId))} 
+          className="text-red-400"
+        >
+          <Trash2 size={14}/>
+        </button>
+      </div>
+    </div>
+  ))}
+</div>

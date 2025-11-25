@@ -1,854 +1,898 @@
-
-
-// import { useState, useEffect } from 'react';
-// import { useAuth } from '../../contexts/AuthContext';
-
-
-// // ⛔️ BARU: Fungsi helper untuk download CSV (Excel)
-// const downloadCSV = (data, filename) => {
-//   if (!data || data.length === 0) {
-//     alert('No data to export');
-//     return;
-//   }
-
-//   // Sederhanakan data yang nested/objek
-//   const simplifiedData = data.map(row => {
-//     const newRow = {};
-//     for (const key in row) {
-//       if (key === 'recipe_id' && row[key] && row[key].cake_id) {
-//         newRow['cake_name'] = row[key].cake_id.name;
-//       } else if (key === 'distribution_items' && Array.isArray(row[key])) {
-//         newRow['items_distributed'] = row[key].reduce((sum, item) => sum + item.quantity_distributed, 0);
-//         newRow['items_damaged'] = row[key].reduce((sum, item) => sum + item.quantity_damaged, 0);
-//       } else if (key === 'ingredient_id' && row[key]) {
-//         newRow['ingredient_name'] = row[key].name;
-//       } else if (typeof row[key] !== 'object' || row[key] === null) {
-//         newRow[key] = row[key];
-//       }
-//     }
-//     return newRow;
-//   });
-
-//   const headers = Object.keys(simplifiedData[0]);
-//   const replacer = (key, value) => value === null ? '' : value;
-
-//   const csvData = simplifiedData.map(row => {
-//     return headers.map(header => {
-//       return JSON.stringify(row[header], replacer).replace(/"/g, '""');
-//     }).join(',');
-//   });
-
-//   const csv = [headers.join(','), ...csvData].join('\n');
-//   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-
-//   const link = document.createElement('a');
-//   if (link.download !== undefined) {
-//     const url = URL.createObjectURL(blob);
-//     link.setAttribute('href', url);
-//     link.setAttribute('download', filename);
-//     link.style.visibility = 'hidden';
-//     document.body.appendChild(link);
-//     link.click();
-//     document.body.removeChild(link);
-//   }
-// };
-
-
-// export default function Reports() {
-//   const [productionReport, setProductionReport] = useState([]);
-//   const [distributionReport, setDistributionReport] = useState([]);
-//   const [ingredientUsageReport, setIngredientUsageReport] = useState([]);
-//   const [financialReport, setFinancialReport] = useState({});
-//   const [startDate, setStartDate] = useState('');
-//   const [endDate, setEndDate] = useState('');
-//   const [loading, setLoading] = useState(false);
-
-//   const { getSupabaseWithAuth } = useAuth();
-
-//   useEffect(() => {
-//     // Set default date range to last 30 days
-//     const today = new Date();
-//     const thirtyDaysAgo = new Date();
-//     thirtyDaysAgo.setDate(today.getDate() - 30);
-    
-//     setStartDate(thirtyDaysAgo.toISOString().split('T')[0]);
-//     setEndDate(today.toISOString().split('T')[0]);
-//   }, []);
-
-//   const generateReports = async () => {
-//     if (!startDate || !endDate) {
-//       alert('Please select both start and end dates');
-//       return;
-//     }
-
-//     setLoading(true);
-
-//     try {
-//       const supabaseClient = getSupabaseWithAuth();
-      
-//       // Production Report
-//       // ⛔️ PERBAIKAN #1: Join diperbaiki
-//       const prodResponse = await supabaseClient
-//         .from('productions')
-//         .select('*, recipe_id(cake_id(name)), total_output, total_cost, production_date')
-//         .gte('production_date', startDate)
-//         .lte('production_date', endDate + ' 23:59:59');
-        
-//       if (prodResponse.error) throw prodResponse.error;
-//       setProductionReport(prodResponse.data || []);
-
-//       // Distribution Report
-//       // ⛔️ PERBAIKAN #2: Join diperbaiki
-//       const distResponse = await supabaseClient
-//         .from('distributions')
-//         .select(`
-//           *,
-//           distribution_items!inner(
-//             cake_id(name),
-//             quantity_distributed,
-//             quantity_damaged
-//           )
-//         `)
-//         .gte('distribution_date', startDate)
-//         .lte('distribution_date', endDate + ' 23:59:59');
-        
-//       if (distResponse.error) throw distResponse.error;
-//       setDistributionReport(distResponse.data || []);
-
-//       // Financial Report
-//       // ⛔️ PERBAIKAN: Menghapus RPC yang gagal (menyebabkan error 404)
-//       // Kita hitung manual dari data yang ada.
-//       // Nanti kita buat RPC baru setelah ada data 'Sales'.
-//       const totalProductionCost = prodResponse.data?.reduce((sum, p) => sum + (p.total_cost || 0), 0) || 0;
-//       setFinancialReport({
-//         totalProductionCost: totalProductionCost,
-//         totalSalesRevenue: 0, // Ini akan diisi dari modul 'Sales' baru nanti
-//         netProfit: 0 - totalProductionCost // Profit sementara = 0 - biaya
-//       });
-
-
-//       // Ingredient Usage Report - for now just showing ingredient purchases
-//       // ⛔️ PERBAIKAN #3: Join diperbaiki
-//       const ingredientResponse = await supabaseClient
-//         .from('ingredient_purchases')
-//         .select('*, ingredient_id(name)')
-//         .gte('purchase_date', startDate)
-//         .lte('purchase_date', endDate + ' 23:59:59');
-        
-//       if (ingredientResponse.error) throw ingredientResponse.error;
-//       setIngredientUsageReport(ingredientResponse.data || []);
-//     } catch (error) {
-//       console.error('Error generating reports:', error);
-//       alert('Error generating reports: ' + error.message);
-//     } finally {
-//       setLoading(false);
-//     }
-//   };
-
-//   // Calculate summary stats
-//   const totalProduced = productionReport.reduce((sum, p) => sum + p.total_output, 0);
-//   const totalProductionCost = productionReport.reduce((sum, p) => sum + (p.total_cost || 0), 0);
-//   const totalDistributed = distributionReport.reduce((sum, d) => {
-//     return sum + d.distribution_items.reduce((itemSum, item) => itemSum + item.quantity_distributed, 0);
-//   }, 0);
-//   const totalDamaged = distributionReport.reduce((sum, d) => {
-//     return sum + d.distribution_items.reduce((itemSum, item) => itemSum + item.quantity_damaged, 0);
-//   }, 0);
-
-//   return (
-//     <div className="p-6">
-//       <h1 className="text-3xl font-bold text-gray-900 mb-6">Reports</h1>
-      
-//       <div className="bg-white p-6 rounded-lg shadow-md mb-8">
-//         <h2 className="text-xl font-semibold mb-4">Report Parameters</h2>
-        
-//         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
-//           <div>
-//             <label className="block text-sm font-medium text-gray-700 mb-1">Start Date</label>
-//             <input
-//               type="date"
-//               value={startDate}
-//               onChange={(e) => setStartDate(e.target.value)}
-//               className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
-//             />
-//           </div>
-          
-//           <div>
-//             <label className="block text-sm font-medium text-gray-700 mb-1">End Date</label>
-//             <input
-//               type="date"
-//               value={endDate}
-//               onChange={(e) => setEndDate(e.target.value)}
-//               className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
-//             />
-//           </div>
-          
-//           <div className="flex items-end">
-//             <button
-//               onClick={generateReports}
-//               disabled={loading}
-//               className="w-full inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50"
-//             >
-//               {loading ? 'Generating...' : 'Generate Reports'}
-//             </button>
-//           </div>
-//         </div>
-        
-//         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-//           <div className="border rounded-lg p-4 text-center">
-//             <p className="text-2xl font-bold text-blue-600">{totalProduced}</p>
-//             <p className="text-gray-600">Total Produced</p>
-//           </div>
-//           <div className="border rounded-lg p-4 text-center">
-//             <p className="text-2xl font-bold text-green-600">{totalProductionCost?.toLocaleString('id-ID', { style: 'currency', currency: 'IDR' }) || '0'}</p>
-//             <p className="text-gray-600">Production Cost</p>
-//           </div>
-//           <div className="border rounded-lg p-4 text-center">
-//             <p className="text-2xl font-bold text-yellow-600">{totalDistributed}</p>
-//             <p className="text-gray-600">Total Distributed</p>
-//           </div>
-//           <div className="border rounded-lg p-4 text-center">
-//             <p className="text-2xl font-bold text-red-600">{totalDamaged}</p>
-//             <p className="text-gray-600">Total Damaged/Unsold</p>
-//           </div>
-//         </div>
-//       </div>
-      
-//       <div className="space-y-8">
-//         {/* Production Summary */}
-//         <div className="bg-white shadow-md rounded-lg overflow-hidden">
-//           {/* ⛔️ BARU: Tombol Export CSV */}
-//           <div className="flex justify-between items-center p-6">
-//             <h2 className="text-xl font-semibold">Production Summary</h2>
-//             <button
-//               onClick={() => downloadCSV(productionReport, 'production_report.csv')}
-//               disabled={productionReport.length === 0}
-//               className="inline-flex items-center px-3 py-1 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-green-600 hover:bg-green-700 disabled:opacity-50"
-//             >
-//               Export CSV
-//             </button>
-//           </div>
-          
-//           <div className="overflow-x-auto">
-//             <table className="min-w-full divide-y divide-gray-200">
-//               <thead className="bg-gray-50">
-//                 <tr>
-//                   <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Cake</th>
-//                   <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
-//                   <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Output</th>
-//                   <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Cost</th>
-//                 </tr>
-//               </thead>
-//               <tbody className="bg-white divide-y divide-gray-200">
-//                 {productionReport.map((production) => (
-//                   <tr key={production.id}>
-//                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-//                       {/* ⛔️ PERBAIKAN #4: Path data diperbaiki */}
-//                       {production.recipe_id?.cake_id?.name || 'Unknown'}
-//                     </td>
-//                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-//                       {new Date(production.production_date).toLocaleDateString()}
-//                     </td>
-//                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{production.total_output}</td>
-//                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-//                       {production.total_cost?.toLocaleString('id-ID', { style: 'currency', currency: 'IDR' })}
-//                     </td>
-//                   </tr>
-//                 ))}
-//               </tbody>
-//             </table>
-//           </div>
-          
-//           {productionReport.length === 0 && (
-//             <div className="text-center py-8 text-gray-500">
-//               No production data available for the selected date range.
-//             </div>
-//           )}
-//         </div>
-        
-//         {/* Distribution Summary */}
-//         <div className="bg-white shadow-md rounded-lg overflow-hidden">
-//           {/* ⛔️ BARU: Tombol Export CSV */}
-//           <div className="flex justify-between items-center p-6">
-//             <h2 className="text-xl font-semibold">Distribution Summary</h2>
-//             <button
-//               onClick={() => downloadCSV(distributionReport, 'distribution_report.csv')}
-//               disabled={distributionReport.length === 0}
-//               className="inline-flex items-center px-3 py-1 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-green-600 hover:bg-green-700 disabled:opacity-50"
-//             >
-//               Export CSV
-//             </button>
-//           </div>
-          
-//           <div className="overflow-x-auto">
-//             <table className="min-w-full divide-y divide-gray-200">
-//               <thead className="bg-gray-50">
-//                 <tr>
-//                   <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
-//                   <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Location</th>
-//                   <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Distributed</th>
-//                   <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Damaged/Unsold</th>
-//                 </tr>
-//               </thead>
-//               <tbody className="bg-white divide-y divide-gray-200">
-//                 {distributionReport.map((distribution) => (
-//                   <tr key={distribution.id}>
-//                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-//                       {new Date(distribution.distribution_date).toLocaleDateString()}
-//                     </td>
-//                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-//                       {distribution.location}
-//                     </td>
-//                     <td className="px-6 py-4 text-sm text-gray-500">
-//                       {distribution.distribution_items.map((item, idx) => (
-//                         <div key={idx}>
-//                           {/* ⛔️ PERBAIKAN #5: Path data diperbaiki */}
-//                           {item.cake_id?.name}: {item.quantity_distributed}
-//                         </div>
-//                       ))}
-//                     </td>
-//                     <td className="px-6 py-4 text-sm text-gray-500">
-//                       {distribution.distribution_items.map((item, idx) => (
-//                         <div key={idx}>
-//                           {/* ⛔️ PERBAIKAN #5 (Bonus): Tampilan diperbaiki agar konsisten */}
-//                           {item.quantity_damaged > 0 ? `${item.cake_id?.name}: ${item.quantity_damaged}` : '-'}
-//                         </div>
-//                       ))}
-//                     </td>
-//                   </tr>
-//                 ))}
-//               </tbody>
-//             </table>
-//           </div>
-          
-//           {distributionReport.length === 0 && (
-//             <div className="text-center py-8 text-gray-500">
-//               No distribution data available for the selected date range.
-//             </div>
-//           )}
-//         </div>
-        
-//         {/* Ingredient Usage */}
-//         <div className="bg-white shadow-md rounded-lg overflow-hidden">
-//           {/* ⛔️ BARU: Tombol Export CSV */}
-//           <div className="flex justify-between items-center p-6">
-//             <h2 className="text-xl font-semibold">Ingredient Purchases</h2>
-//             <button
-//               onClick={() => downloadCSV(ingredientUsageReport, 'ingredient_purchases.csv')}
-//               disabled={ingredientUsageReport.length === 0}
-//               className="inline-flex items-center px-3 py-1 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-green-600 hover:bg-green-700 disabled:opacity-50"
-//             >
-//               Export CSV
-//             </button>
-//           </div>
-//           <p className="px-6 pb-4 text-sm text-gray-600 -mt-4">Menampilkan log pembelian bahan baku pada rentang tanggal yang dipilih.</p>
-          
-//           <div className="overflow-x-auto">
-//             <table className="min-w-full divide-y divide-gray-200">
-//               <thead className="bg-gray-50">
-//                 <tr>
-//                   <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Ingredient</th>
-//                   <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
-//                   <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Quantity (unit dasar)</th>
-//                   <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Cost</th>
-//                 </tr>
-//               </thead>
-//               <tbody className="bg-white divide-y divide-gray-200">
-//                 {ingredientUsageReport.map((purchase) => (
-//                   <tr key={purchase.id}>
-//                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-//                       {/* ⛔️ PERBAIKAN #6: Path data diperbaiki */}
-//                       {purchase.ingredient_id?.name || 'Unknown'}
-//                     </td>
-//                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-//                       {new Date(purchase.purchase_date).toLocaleDateString()}
-//                     </td>
-//                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{purchase.quantity}</td>
-//                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-//                       {purchase.total_cost?.toLocaleString('id-ID', { style: 'currency', currency: 'IDR' })}
-//                     </td>
-//                   </tr>
-//                 ))}
-//               </tbody>
-//             </table>
-//           </div>
-          
-//           {ingredientUsageReport.length === 0 && (
-//             <div className="text-center py-8 text-gray-500">
-//               No ingredient purchase data available for the selected date range.
-//             </div>
-//           )}
-//         </div>
-        
-//         {/* Financial Summary */}
-//         <div className="bg-white shadow-md rounded-lg overflow-hidden">
-//           <h2 className="text-xl font-semibold p-6">Financial Summary</h2>
-          
-//           <div className="p-6">
-//             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-//               <div className="border rounded-lg p-4">
-//                 <p className="text-sm text-gray-600">Total Production Cost</p>
-//                 <p className="text-xl font-semibold">
-//                   {financialReport.totalProductionCost?.toLocaleString('id-ID', { style: 'currency', currency: 'IDR' }) || '0'}
-//                 </p>
-//               </div>
-//               <div className="border rounded-lg p-4">
-//                 <p className="text-sm text-gray-600">Total Sales Revenue</p>
-//                 <p className="text-xl font-semibold text-gray-400">
-//                   {financialReport.totalSalesRevenue?.toLocaleString('id-ID', { style: 'currency', currency: 'IDR' }) || 'Rp0,00'}
-//                 </p>
-//               </div>
-//               <div className="border rounded-lg p-4">
-//                 <p className="text-sm text-gray-600">Net Profit</p>
-//                 <p className="text-xl font-semibold text-red-500">
-//                   {financialReport.netProfit?.toLocaleString('id-ID', { style: 'currency', currency: 'IDR' }) || 'Rp0,00'}
-//                 </p>
-//               </div>
-//             </div>
-            
-//             <div className="mt-6">
-//               <h3 className="text-lg font-medium text-gray-900 mb-2">Notes</h3>
-//               <p className="text-gray-600">
-//                 {/* ⛔️ PERBAIKAN: Teks catatan diubah */}
-//                 Laporan Profit & Revenue memerlukan data penjualan. Saat ini, profit hanya menampilkan nilai negatif berdasarkan biaya produksi.
-//                 Kita perlu membuat modul 'Catatan Penjualan' untuk menghitung profit sebenarnya.
-//               </p>
-//             </div>
-//           </div>
-//         </div>
-//       </div>
-//     </div>
-//   );
-// }
-
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
+import { jsPDF } from 'jspdf';
+import autoTable from 'jspdf-autotable';
+import { Download, Filter, Calendar, MapPin, Package, TrendingUp, AlertTriangle } from 'lucide-react';
 
-// Fungsi helper untuk download CSV
-const downloadCSV = (data, filename) => {
-  if (!data || data.length === 0) {
-    alert('No data to export');
-    return;
-  }
+// Helper functions
+const formatIDR = (num) =>
+  new Intl.NumberFormat('id-ID', {
+    style: 'currency',
+    currency: 'IDR',
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(Math.floor(num || 0));
 
-  // Sederhanakan data yang nested/objek
-  const simplifiedData = data.map(row => {
-    const newRow = {};
-    for (const key in row) {
-      if (key === 'recipe_id' && row[key] && row[key].cake_id) {
-        newRow['cake_name'] = row[key].cake_id.name;
-      } else if (key === 'distribution_items' && Array.isArray(row[key])) {
-        newRow['items_sent'] = row[key].reduce((sum, item) => sum + (item.quantity_sent || 0), 0);
-        newRow['items_sold'] = row[key].reduce((sum, item) => sum + (item.quantity_sold || 0), 0);
-        newRow['items_returned'] = row[key].reduce((sum, item) => sum + (item.quantity_returned_good || 0), 0);
-        newRow['items_damaged'] = row[key].reduce((sum, item) => sum + (item.quantity_damaged_at_location || 0), 0);
-      } else if (key === 'ingredient_id' && row[key]) {
-        newRow['ingredient_name'] = row[key].name;
-      } else if (typeof row[key] !== 'object' || row[key] === null) {
-        newRow[key] = row[key];
-      }
-    }
-    return newRow;
+const formatDate = (dateString) => {
+  return new Date(dateString).toLocaleDateString('id-ID', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric'
   });
-
-  const headers = Object.keys(simplifiedData[0] || {});
-  const replacer = (key, value) => value === null ? '' : value;
-
-  const csvData = simplifiedData.map(row => {
-    return headers.map(header => {
-      return JSON.stringify(row[header], replacer).replace(/"/g, '""');
-    }).join(',');
-  });
-
-  const csv = [headers.join(','), ...csvData].join('\n');
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-
-  const link = document.createElement('a');
-  if (link.download !== undefined) {
-    const url = URL.createObjectURL(blob);
-    link.setAttribute('href', url);
-    link.setAttribute('download', filename);
-    link.style.visibility = 'hidden';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  }
 };
 
-export default function Reports() {
-  const [productionReport, setProductionReport] = useState([]);
-  const [distributionReport, setDistributionReport] = useState([]);
-  const [ingredientUsageReport, setIngredientUsageReport] = useState([]);
-  const [financialReport, setFinancialReport] = useState({});
-  const [startDate, setStartDate] = useState('');
-  const [endDate, setEndDate] = useState('');
-  const [loading, setLoading] = useState(false);
-
+// Laporan Produksi
+export function ProductionReport() {
   const { getSupabaseWithAuth } = useAuth();
+  const [data, setData] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [filters, setFilters] = useState({
+    startDate: '',
+    endDate: '',
+    cakeName: ''
+  });
 
-  useEffect(() => {
-    const today = new Date();
-    const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(today.getDate() - 30);
-    
-    setStartDate(thirtyDaysAgo.toISOString().split('T')[0]);
-    setEndDate(today.toISOString().split('T')[0]);
-  }, []);
-
-  const generateReports = async () => {
-    if (!startDate || !endDate) {
-      alert('Please select both start and end dates');
-      return;
-    }
-
+  const fetchProductionData = async () => {
     setLoading(true);
+    const supabase = getSupabaseWithAuth();
 
     try {
-      const supabaseClient = getSupabaseWithAuth();
-      
-      // 1. Production Report
-      const prodResponse = await supabaseClient
+      let query = supabase
         .from('productions')
-        .select('*, recipe_id(cake_id(name)), total_output, total_cost, production_date')
-        .gte('production_date', startDate)
-        .lte('production_date', endDate + ' 23:59:59');
-        
-      if (prodResponse.error) throw prodResponse.error;
-      setProductionReport(prodResponse.data || []);
-
-      // 2. Distribution Report
-      const distResponse = await supabaseClient
-        .from('distributions')
         .select(`
-          id, location, distribution_date,
-          distribution_items!inner(
-            quantity_sent,
-            quantity_sold,
-            quantity_returned_good,
-            quantity_damaged_at_location,
-            cake_id ( name, price_per_piece )
+          *,
+          recipe_id (
+            cake_id (
+              id, name
+            )
           )
         `)
-        .gte('distribution_date', startDate)
-        .lte('distribution_date', endDate + ' 23:59:59');
-        
-      if (distResponse.error) throw distResponse.error;
-      setDistributionReport(distResponse.data || []);
+        .order('production_date', { ascending: false });
 
-      // 3. Financial Report
-      const totalProductionCost = prodResponse.data?.reduce((sum, p) => sum + (p.total_cost || 0), 0) || 0;
-      
-      const totalSalesRevenue = distResponse.data?.reduce((sum, d) => {
-        const itemsRevenue = d.distribution_items.reduce((itemSum, item) => {
-          const price = item.cake_id?.price_per_piece || 0;
-          return itemSum + (item.quantity_sold * price);
-        }, 0);
-        return sum + itemsRevenue;
-      }, 0) || 0;
+      // Apply filters
+      if (filters.startDate) {
+        query = query.gte('production_date', filters.startDate);
+      }
+      if (filters.endDate) {
+        query = query.lte('production_date', filters.endDate + 'T23:59:59');
+      }
 
-      setFinancialReport({
-        totalProductionCost: totalProductionCost,
-        totalSalesRevenue: totalSalesRevenue,
-        netProfit: totalSalesRevenue - totalProductionCost
-      });
+      const { data: productions, error } = await query;
 
-      // 4. Ingredient Usage Report
-      const ingredientResponse = await supabaseClient
-        .from('ingredient_purchases')
-        .select('*, ingredient_id(name)')
-        .gte('purchase_date', startDate)
-        .lte('purchase_date', endDate + ' 23:59:59');
-        
-      if (ingredientResponse.error) throw ingredientResponse.error;
-      setIngredientUsageReport(ingredientResponse.data || []);
+      if (error) throw error;
+
+      // Process data
+      const processedData = productions.map(prod => ({
+        id: prod.id,
+        productionDate: prod.production_date,
+        cakeName: prod.recipe_id?.cake_id?.name || 'Unknown',
+        batchCount: prod.batch_count,
+        totalOutput: prod.total_output,
+        totalCost: prod.total_cost,
+        costPerPiece: prod.total_cost / prod.total_output,
+        expiredDate: prod.expired_date
+      }));
+
+      // Filter by cake name if specified
+      const filteredData = filters.cakeName 
+        ? processedData.filter(item => 
+            item.cakeName.toLowerCase().includes(filters.cakeName.toLowerCase()))
+        : processedData;
+
+      setData(filteredData);
+
     } catch (error) {
-      console.error('Error generating reports:', error);
-      alert('Error generating reports: ' + error.message);
+      console.error('Error fetching production data:', error);
     } finally {
       setLoading(false);
     }
   };
 
-  // Kalkulasi summary stats
-  const totalProduced = productionReport.reduce((sum, p) => sum + (p.total_output || 0), 0);
-  const totalProductionCost = financialReport.totalProductionCost || 0;
-  
-  const totalSent = distributionReport.reduce((sum, d) => {
-    return sum + d.distribution_items.reduce((itemSum, item) => itemSum + (item.quantity_sent || 0), 0);
-  }, 0);
-  
-  const totalSold = distributionReport.reduce((sum, d) => {
-    return sum + d.distribution_items.reduce((itemSum, item) => itemSum + (item.quantity_sold || 0), 0);
-  }, 0);
+  const exportToPDF = () => {
+    const doc = new jsPDF();
+    
+    // Title
+    doc.setFontSize(16);
+    doc.text('LAPORAN PRODUKSI', 105, 15, { align: 'center' });
+    
+    // Date range
+    doc.setFontSize(10);
+    let dateRange = 'Semua Tanggal';
+    if (filters.startDate && filters.endDate) {
+      dateRange = `${formatDate(filters.startDate)} - ${formatDate(filters.endDate)}`;
+    } else if (filters.startDate) {
+      dateRange = `Dari ${formatDate(filters.startDate)}`;
+    } else if (filters.endDate) {
+      dateRange = `Sampai ${formatDate(filters.endDate)}`;
+    }
+    doc.text(`Periode: ${dateRange}`, 105, 22, { align: 'center' });
 
-  const totalReturned = distributionReport.reduce((sum, d) => {
-    return sum + d.distribution_items.reduce((itemSum, item) => itemSum + (item.quantity_returned_good || 0), 0);
-  }, 0);
+    // Summary
+    const totalOutput = data.reduce((sum, item) => sum + item.totalOutput, 0);
+    const totalCost = data.reduce((sum, item) => sum + item.totalCost, 0);
+    const totalBatches = data.reduce((sum, item) => sum + item.batchCount, 0);
 
-  const totalDamaged = distributionReport.reduce((sum, d) => {
-    return sum + d.distribution_items.reduce((itemSum, item) => itemSum + (item.quantity_damaged_at_location || 0), 0);
-  }, 0);
+    doc.text(`Total Produksi: ${totalOutput.toLocaleString()} pcs | Total Batch: ${totalBatches} | Total Biaya: ${formatIDR(totalCost)}`, 14, 32);
+
+    // Table
+    const tableData = data.map(item => [
+      formatDate(item.productionDate),
+      item.cakeName,
+      item.batchCount.toLocaleString(),
+      item.totalOutput.toLocaleString(),
+      formatIDR(item.totalCost),
+      formatIDR(item.costPerPiece),
+      formatDate(item.expiredDate)
+    ]);
+
+    autoTable(doc,{
+      startY: 40,
+      head: [['Tanggal', 'Nama Kue', 'Batch', 'Output (pcs)', 'Total Biaya', 'Biaya per Pcs', 'Kadaluarsa']],
+      body: tableData,
+      styles: { fontSize: 8 },
+      headStyles: { fillColor: [66, 135, 245] }
+    });
+
+    // Footer
+    const pageCount = doc.internal.getNumberOfPages();
+    for (let i = 1; i <= pageCount; i++) {
+      doc.setPage(i);
+      doc.setFontSize(8);
+      doc.text(`Generated on ${new Date().toLocaleDateString('id-ID')} - Page ${i} of ${pageCount}`, 105, doc.internal.pageSize.height - 10, { align: 'center' });
+    }
+
+    doc.save(`laporan-produksi-${new Date().toISOString().split('T')[0]}.pdf`);
+  };
+
+  useEffect(() => {
+    fetchProductionData();
+  }, [filters]);
 
   return (
-    <div className="p-6">
-      <h1 className="text-3xl font-bold text-gray-900 mb-6">Reports</h1>
-      
-      <div className="bg-white p-6 rounded-lg shadow-md mb-8">
-        <h2 className="text-xl font-semibold mb-4">Report Parameters</h2>
-        
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+    <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+      {/* Header */}
+      <div className="p-6 border-b border-gray-200">
+        <div className="flex justify-between items-center mb-4">
+          <h2 className="text-xl font-semibold text-gray-800 flex items-center">
+            <Package className="mr-2 text-blue-600" size={24} />
+            Laporan Produksi
+          </h2>
+          <button
+            onClick={exportToPDF}
+            disabled={loading || data.length === 0}
+            className="flex items-center px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <Download size={16} className="mr-2" />
+            Export PDF
+          </button>
+        </div>
+
+        {/* Filters */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Start Date</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Dari Tanggal</label>
             <input
               type="date"
-              value={startDate}
-              onChange={(e) => setStartDate(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+              value={filters.startDate}
+              onChange={(e) => setFilters(prev => ({ ...prev, startDate: e.target.value }))}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">End Date</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Sampai Tanggal</label>
             <input
               type="date"
-              value={endDate}
-              onChange={(e) => setEndDate(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+              value={filters.endDate}
+              onChange={(e) => setFilters(prev => ({ ...prev, endDate: e.target.value }))}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Nama Kue</label>
+            <input
+              type="text"
+              value={filters.cakeName}
+              onChange={(e) => setFilters(prev => ({ ...prev, cakeName: e.target.value }))}
+              placeholder="Filter nama kue..."
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
           <div className="flex items-end">
             <button
-              onClick={generateReports}
-              disabled={loading}
-              className="w-full inline-flex items-center justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50"
+              onClick={() => setFilters({ startDate: '', endDate: '', cakeName: '' })}
+              className="w-full px-3 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50"
             >
-              {loading ? 'Generating...' : 'Generate Reports'}
+              Reset Filter
             </button>
-          </div>
-        </div>
-        
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          <div className="border rounded-lg p-4 text-center">
-            <p className="text-2xl font-bold text-blue-600">{totalProduced}</p>
-            <p className="text-gray-600">Total Produced</p>
-          </div>
-          <div className="border rounded-lg p-4 text-center">
-            <p className="text-2xl font-bold text-yellow-600">{totalSent}</p>
-            <p className="text-gray-600">Total Sent</p>
-          </div>
-          <div className="border rounded-lg p-4 text-center">
-            <p className="text-2xl font-bold text-green-600">{totalSold}</p>
-            <p className="text-gray-600">Total Sold</p>
-          </div>
-          <div className="border rounded-lg p-4 text-center">
-            <p className="text-2xl font-bold text-red-600">{totalDamaged}</p>
-            <p className="text-gray-600">Total Damaged</p>
           </div>
         </div>
       </div>
+
+      {/* Table */}
+      <div className="p-6">
+        {loading ? (
+          <div className="text-center py-8">
+            <div className="text-gray-500">Memuat data produksi...</div>
+          </div>
+        ) : data.length === 0 ? (
+          <div className="text-center py-8">
+            <Package size={48} className="mx-auto text-gray-400 mb-2" />
+            <div className="text-gray-500">Tidak ada data produksi</div>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm text-left">
+              <thead className="bg-gray-50 text-gray-700">
+                <tr>
+                  <th className="px-4 py-3 font-medium">Tanggal Produksi</th>
+                  <th className="px-4 py-3 font-medium">Nama Kue</th>
+                  <th className="px-4 py-3 font-medium text-right">Batch</th>
+                  <th className="px-4 py-3 font-medium text-right">Output (pcs)</th>
+                  <th className="px-4 py-3 font-medium text-right">Total Biaya</th>
+                  <th className="px-4 py-3 font-medium text-right">Biaya per Pcs</th>
+                  <th className="px-4 py-3 font-medium">Kadaluarsa</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-200">
+                {data.map((item) => (
+                  <tr key={item.id} className="hover:bg-gray-50">
+                    <td className="px-4 py-3">{formatDate(item.productionDate)}</td>
+                    <td className="px-4 py-3 font-medium">{item.cakeName}</td>
+                    <td className="px-4 py-3 text-right">{item.batchCount.toLocaleString()}</td>
+                    <td className="px-4 py-3 text-right">{item.totalOutput.toLocaleString()}</td>
+                    <td className="px-4 py-3 text-right">{formatIDR(item.totalCost)}</td>
+                    <td className="px-4 py-3 text-right">{formatIDR(item.costPerPiece)}</td>
+                    <td className="px-4 py-3">{formatDate(item.expiredDate)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+
+
+// ... formatIDR dan formatDate tetap sama ...
+
+// Laporan Distribusi yang Diperbaiki
+export function DistributionReport() {
+  const { getSupabaseWithAuth } = useAuth();
+  const [data, setData] = useState([]);
+  const [areas, setAreas] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [filters, setFilters] = useState({
+    startDate: '',
+    endDate: '',
+    area: ''
+  });
+
+  const fetchDistributionData = async () => {
+    setLoading(true);
+    const supabase = getSupabaseWithAuth();
+
+    try {
+      // Get unique areas first
+      const { data: kiosksData, error: kiosksError } = await supabase
+        .from('kiosks')
+        .select('area')
+        .not('area', 'is', null);
+
+      if (kiosksError) throw kiosksError;
       
-      <div className="space-y-8">
-        {/* Production Summary */}
-        <div className="bg-white shadow-md rounded-lg overflow-hidden">
-          <div className="flex justify-between items-center p-6">
-            <h2 className="text-xl font-semibold">Production Summary</h2>
-            <button
-              onClick={() => downloadCSV(productionReport, 'production_report.csv')}
-              disabled={productionReport.length === 0}
-              className="inline-flex items-center px-3 py-1 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-green-600 hover:bg-green-700 disabled:opacity-50"
-            >
-              Export CSV
-            </button>
+      const uniqueAreas = [...new Set(kiosksData.map(k => k.area))].filter(area => area);
+      setAreas(uniqueAreas);
+
+      // Fetch distribution data
+      let query = supabase
+        .from('distributions')
+        .select(`
+          *,
+          distribution_items (
+            quantity_sent,
+            quantity_sold,
+            quantity_damaged_at_location,
+            cake_id (
+              id, name, price_per_piece
+            )
+          ),
+          kiosk_id (
+            id, name, area
+          )
+        `)
+        .order('distribution_date', { ascending: false });
+
+      if (filters.startDate) {
+        query = query.gte('distribution_date', filters.startDate);
+      }
+      if (filters.endDate) {
+        query = query.lte('distribution_date', filters.endDate + 'T23:59:59');
+      }
+      if (filters.area) {
+        query = query.eq('kiosk_id.area', filters.area);
+      }
+
+      const { data: distributions, error } = await query;
+
+      if (error) throw error;
+
+      // Process data dengan agregasi - grouping by distribution_date, kiosk_id, dan cake_id
+      const aggregatedData = {};
+      
+      distributions.forEach(dist => {
+        const distDate = new Date(dist.distribution_date).toDateString();
+        const kioskId = dist.kiosk_id?.id;
+        
+        dist.distribution_items?.forEach(item => {
+          const cakeId = item.cake_id?.id;
+          const key = `${distDate}-${kioskId}-${cakeId}`;
+          
+          if (!aggregatedData[key]) {
+            // Data baru
+            aggregatedData[key] = {
+              id: key,
+              distributionDate: dist.distribution_date,
+              kioskName: dist.kiosk_id?.name,
+              area: dist.kiosk_id?.area,
+              cakeName: item.cake_id?.name,
+              quantitySent: 0,
+              quantitySold: 0,
+              quantityDamaged: 0,
+              pricePerPiece: item.cake_id?.price_per_piece,
+              location: dist.location
+            };
+          }
+          
+          // Agregasi quantity
+          aggregatedData[key].quantitySent += item.quantity_sent || 0;
+          aggregatedData[key].quantitySold += item.quantity_sold || 0;
+          aggregatedData[key].quantityDamaged += item.quantity_damaged_at_location || 0;
+        });
+      });
+
+      // Convert to array dan sort by date
+      const processedData = Object.values(aggregatedData)
+        .sort((a, b) => new Date(b.distributionDate) - new Date(a.distributionDate));
+
+      setData(processedData);
+
+    } catch (error) {
+      console.error('Error fetching distribution data:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const exportToPDF = () => {
+    const doc = new jsPDF();
+    
+    doc.setFontSize(16);
+    doc.text('LAPORAN DISTRIBUSI', 105, 15, { align: 'center' });
+    
+    doc.setFontSize(10);
+    let dateRange = 'Semua Tanggal';
+    if (filters.startDate && filters.endDate) {
+      dateRange = `${formatDate(filters.startDate)} - ${formatDate(filters.endDate)}`;
+    }
+    let areaFilter = filters.area ? ` | Area: ${filters.area}` : '';
+    doc.text(`Periode: ${dateRange}${areaFilter}`, 105, 22, { align: 'center' });
+
+    // Summary by area
+    const areaSummary = {};
+    data.forEach(item => {
+      if (!areaSummary[item.area]) {
+        areaSummary[item.area] = {
+          totalSent: 0,
+          totalSold: 0,
+          totalDamaged: 0,
+          kiosks: new Set()
+        };
+      }
+      areaSummary[item.area].totalSent += item.quantitySent;
+      areaSummary[item.area].totalSold += item.quantitySold;
+      areaSummary[item.area].totalDamaged += item.quantityDamaged;
+      areaSummary[item.area].kiosks.add(item.kioskName);
+    });
+
+    let yPos = 32;
+    Object.entries(areaSummary).forEach(([area, stats]) => {
+      const text = `${area}: ${stats.kiosks.size} kiosk, ${stats.totalSent} pcs dikirim, ${stats.totalSold} pcs terjual, ${stats.totalDamaged} pcs rusak`;
+      if (yPos > 270) {
+        doc.addPage();
+        yPos = 20;
+      }
+      doc.text(text, 14, yPos);
+      yPos += 6;
+    });
+
+    yPos += 4;
+
+    // Table - PERBAIKAN: menggunakan autoTable yang benar
+    const tableData = data.map(item => [
+      formatDate(item.distributionDate),
+      item.kioskName,
+      item.area,
+      item.cakeName,
+      item.quantitySent.toString(),
+      item.quantitySold.toString(),
+      item.quantityDamaged.toString(),
+      item.quantitySent > 0 ? `${((item.quantitySold / item.quantitySent) * 100).toFixed(1)}%` : '0%'
+    ]);
+
+    // PERBAIKAN: Gunakan autoTable seperti ini
+    autoTable(doc, {
+      startY: yPos,
+      head: [['Tanggal', 'Kiosk', 'Area', 'Kue', 'Dikirim', 'Terjual', 'Rusak', 'Penjualan']],
+      body: tableData,
+      styles: { fontSize: 8 },
+      headStyles: { fillColor: [79, 70, 229] }
+    });
+
+    const pageCount = doc.internal.getNumberOfPages();
+    for (let i = 1; i <= pageCount; i++) {
+      doc.setPage(i);
+      doc.setFontSize(8);
+      doc.text(`Generated on ${new Date().toLocaleDateString('id-ID')} - Page ${i} of ${pageCount}`, 105, doc.internal.pageSize.height - 10, { align: 'center' });
+    }
+
+    doc.save(`laporan-distribusi-${new Date().toISOString().split('T')[0]}.pdf`);
+  };
+
+  useEffect(() => {
+    fetchDistributionData();
+  }, [filters]);
+
+  return (
+    <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+      <div className="p-6 border-b border-gray-200">
+        <div className="flex justify-between items-center mb-4">
+          <h2 className="text-xl font-semibold text-gray-800 flex items-center">
+            <MapPin className="mr-2 text-indigo-600" size={24} />
+            Laporan Distribusi
+          </h2>
+          <button
+            onClick={exportToPDF}
+            disabled={loading || data.length === 0}
+            className="flex items-center px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <Download size={16} className="mr-2" />
+            Export PDF
+          </button>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Dari Tanggal</label>
+            <input
+              type="date"
+              value={filters.startDate}
+              onChange={(e) => setFilters(prev => ({ ...prev, startDate: e.target.value }))}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            />
           </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Sampai Tanggal</label>
+            <input
+              type="date"
+              value={filters.endDate}
+              onChange={(e) => setFilters(prev => ({ ...prev, endDate: e.target.value }))}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Area</label>
+            <select
+              value={filters.area}
+              onChange={(e) => setFilters(prev => ({ ...prev, area: e.target.value }))}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            >
+              <option value="">Semua Area</option>
+              {areas.map(area => (
+                <option key={area} value={area}>{area}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <div className="p-6">
+        {loading ? (
+          <div className="text-center py-8">
+            <div className="text-gray-500">Memuat data distribusi...</div>
+          </div>
+        ) : data.length === 0 ? (
+          <div className="text-center py-8">
+            <MapPin size={48} className="mx-auto text-gray-400 mb-2" />
+            <div className="text-gray-500">Tidak ada data distribusi</div>
+          </div>
+        ) : (
           <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
+            <table className="w-full text-sm text-left">
+              <thead className="bg-gray-50 text-gray-700">
                 <tr>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Cake</th>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Output</th>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Cost</th>
+                  <th className="px-4 py-3 font-medium">Tanggal</th>
+                  <th className="px-4 py-3 font-medium">Kiosk</th>
+                  <th className="px-4 py-3 font-medium">Area</th>
+                  <th className="px-4 py-3 font-medium">Kue</th>
+                  <th className="px-4 py-3 font-medium text-right">Dikirim</th>
+                  <th className="px-4 py-3 font-medium text-right">Terjual</th>
+                  <th className="px-4 py-3 font-medium text-right">Rusak</th>
+                  <th className="px-4 py-3 font-medium text-right">Penjualan</th>
                 </tr>
               </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {productionReport.map((production) => (
-                  <tr key={production.id}>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                      {production.recipe_id?.cake_id?.name || 'Unknown'}
+              <tbody className="divide-y divide-gray-200">
+                {data.map((item) => (
+                  <tr key={item.id} className="hover:bg-gray-50">
+                    <td className="px-4 py-3">{formatDate(item.distributionDate)}</td>
+                    <td className="px-4 py-3 font-medium">{item.kioskName}</td>
+                    <td className="px-4 py-3">
+                      <span className="px-2 py-1 bg-indigo-100 text-indigo-800 rounded-full text-xs">
+                        {item.area}
+                      </span>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {new Date(production.production_date).toLocaleDateString()}
+                    <td className="px-4 py-3">{item.cakeName}</td>
+                    <td className="px-4 py-3 text-right">{item.quantitySent}</td>
+                    <td className="px-4 py-3 text-right text-green-600 font-medium">
+                      {item.quantitySold}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{production.total_output}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {production.total_cost?.toLocaleString('id-ID', { style: 'currency', currency: 'IDR' })}
+                    <td className="px-4 py-3 text-right text-red-600">
+                      {item.quantityDamaged}
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      {item.quantitySent > 0 ? `${((item.quantitySold / item.quantitySent) * 100).toFixed(1)}%` : '0%'}
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
-          {productionReport.length === 0 && (
-            <div className="text-center py-8 text-gray-500">
-              No production data available for the selected date range.
-            </div>
-          )}
-        </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// Laporan Penjualan & Kerusakan
+export function SalesReport() {
+  const { getSupabaseWithAuth } = useAuth();
+  const [data, setData] = useState([]);
+  const [summary, setSummary] = useState({});
+  const [loading, setLoading] = useState(false);
+  const [filters, setFilters] = useState({
+    startDate: '',
+    endDate: '',
+    viewBy: 'cake' // 'cake' or 'area'
+  });
+
+  const fetchSalesData = async () => {
+    setLoading(true);
+    const supabase = getSupabaseWithAuth();
+
+    try {
+      let query = supabase
+        .from('distributions')
+        .select(`
+          distribution_date,
+          kiosk_id (
+            area
+          ),
+          distribution_items (
+            quantity_sold,
+            quantity_damaged_at_location,
+            price_at_distribution,
+            cake_id (
+              id, name
+            )
+          )
+        `)
+        .order('distribution_date', { ascending: false });
+
+      if (filters.startDate) {
+        query = query.gte('distribution_date', filters.startDate);
+      }
+      if (filters.endDate) {
+        query = query.lte('distribution_date', filters.endDate + 'T23:59:59');
+      }
+
+      const { data: distributions, error } = await query;
+
+      if (error) throw error;
+
+      // Process data based on view type
+      let processedData = [];
+      const summaryData = {
+        totalSold: 0,
+        totalDamaged: 0,
+        totalRevenue: 0
+      };
+
+      if (filters.viewBy === 'cake') {
+        const cakeMap = {};
         
-        {/* Distribution Summary */}
-        <div className="bg-white shadow-md rounded-lg overflow-hidden">
-          <div className="flex justify-between items-center p-6">
-            <h2 className="text-xl font-semibold">Distribution Summary</h2>
-            <button
-              onClick={() => downloadCSV(distributionReport, 'distribution_report.csv')}
-              disabled={distributionReport.length === 0}
-              className="inline-flex items-center px-3 py-1 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-green-600 hover:bg-green-700 disabled:opacity-50"
-            >
-              Export CSV
-            </button>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Location</th>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Sent</th>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Sold</th>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Returned</th>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Damaged</th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {distributionReport.map((distribution) => (
-                  <tr key={distribution.id}>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {new Date(distribution.distribution_date).toLocaleDateString()}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                      {distribution.location}
-                    </td>
-                    <td className="px-6 py-4 text-sm text-gray-500">
-                      {distribution.distribution_items.map((item, idx) => (
-                        <div key={idx}>
-                          {item.cake_id?.name}: {item.quantity_sent}
-                        </div>
-                      ))}
-                    </td>
-                    <td className="px-6 py-4 text-sm text-gray-500">
-                      {distribution.distribution_items.map((item, idx) => (
-                        <div key={idx}>
-                          {item.cake_id?.name}: {item.quantity_sold}
-                        </div>
-                      ))}
-                    </td>
-                    <td className="px-6 py-4 text-sm text-gray-500">
-                      {distribution.distribution_items.map((item, idx) => (
-                        <div key={idx}>
-                          {item.cake_id?.name}: {item.quantity_returned_good}
-                        </div>
-                      ))}
-                    </td>
-                    <td className="px-6 py-4 text-sm text-gray-500">
-                      {distribution.distribution_items.map((item, idx) => (
-                        <div key={idx}>
-                          {item.cake_id?.name}: {item.quantity_damaged_at_location}
-                        </div>
-                      ))}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          {distributionReport.length === 0 && (
-            <div className="text-center py-8 text-gray-500">
-              No distribution data available for the selected date range.
-            </div>
-          )}
-        </div>
-        
-        {/* Ingredient Purchases */}
-        <div className="bg-white shadow-md rounded-lg overflow-hidden">
-          <div className="flex justify-between items-center p-6">
-            <h2 className="text-xl font-semibold">Ingredient Purchases</h2>
-            <button
-              onClick={() => downloadCSV(ingredientUsageReport, 'ingredient_purchases.csv')}
-              disabled={ingredientUsageReport.length === 0}
-              className="inline-flex items-center px-3 py-1 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-green-600 hover:bg-green-700 disabled:opacity-50"
-            >
-              Export CSV
-            </button>
-          </div>
-          <p className="px-6 pb-4 text-sm text-gray-600 -mt-4">Menampilkan log pembelian bahan baku pada rentang tanggal yang dipilih.</p>
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Ingredient</th>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Quantity (unit dasar)</th>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Cost</th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {ingredientUsageReport.map((purchase) => (
-                  <tr key={purchase.id}>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                      {purchase.ingredient_id?.name || 'Unknown'}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {new Date(purchase.purchase_date).toLocaleDateString()}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{purchase.quantity}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {purchase.total_cost?.toLocaleString('id-ID', { style: 'currency', currency: 'IDR' })}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          {ingredientUsageReport.length === 0 && (
-            <div className="text-center py-8 text-gray-500">
-              No ingredient purchase data available for the selected date range.
-            </div>
-          )}
-        </div>
-        
-        {/* Financial Summary */}
-        <div className="bg-white shadow-md rounded-lg overflow-hidden">
-          <h2 className="text-xl font-semibold p-6">Financial Summary</h2>
-          <div className="p-6">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <div className="border rounded-lg p-4">
-                <p className="text-sm text-gray-600">Total Production Cost</p>
-                <p className="text-xl font-semibold text-red-600">
-                  {financialReport.totalProductionCost?.toLocaleString('id-ID', { style: 'currency', currency: 'IDR' }) || 'Rp0,00'}
-                </p>
-              </div>
-              <div className="border rounded-lg p-4">
-                <p className="text-sm text-gray-600">Total Sales Revenue</p>
-                <p className="text-xl font-semibold text-green-600">
-                  {financialReport.totalSalesRevenue?.toLocaleString('id-ID', { style: 'currency', currency: 'IDR' }) || 'Rp0,00'}
-                </p>
-              </div>
-              <div className="border rounded-lg p-4">
-                <p className="text-sm text-gray-600">Gross Profit</p>
-                <p className={`text-xl font-semibold ${financialReport.netProfit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                  {financialReport.netProfit?.toLocaleString('id-ID', { style: 'currency', currency: 'IDR' }) || 'Rp0,00'}
-                </p>
-              </div>
-            </div>
+        distributions.forEach(dist => {
+          dist.distribution_items?.forEach(item => {
+            const cakeId = item.cake_id?.id;
+            if (!cakeMap[cakeId]) {
+              cakeMap[cakeId] = {
+                id: cakeId,
+                name: item.cake_id?.name || 'Unknown',
+                totalSold: 0,
+                totalDamaged: 0,
+                totalRevenue: 0
+              };
+            }
             
-            <div className="mt-6">
-              {/* <h3 className="text-lg font-medium text-gray-900 mb-2">Notes</h3>
-              <p className="text-gray-600">
-                Laba Kotor (Gross Profit) dihitung dari Total Pendapatan (dari item terjual di modul distribusi) dikurangi Total Biaya Produksi.
-                Laporan ini belum termasuk biaya operasional lain dan kerugian dari barang rusak (yang masih dihitung sebagai item, bukan rupiah).
-              </p> */}
-            </div>
+            cakeMap[cakeId].totalSold += item.quantity_sold;
+            cakeMap[cakeId].totalDamaged += item.quantity_damaged_at_location;
+            cakeMap[cakeId].totalRevenue += item.quantity_sold * (item.price_at_distribution || 0);
+
+            summaryData.totalSold += item.quantity_sold;
+            summaryData.totalDamaged += item.quantity_damaged_at_location;
+            summaryData.totalRevenue += item.quantity_sold * (item.price_at_distribution || 0);
+          });
+        });
+
+        processedData = Object.values(cakeMap);
+      } else {
+        const areaMap = {};
+        
+        distributions.forEach(dist => {
+          const area = dist.kiosk_id?.area || 'Unknown';
+          
+          dist.distribution_items?.forEach(item => {
+            if (!areaMap[area]) {
+              areaMap[area] = {
+                name: area,
+                totalSold: 0,
+                totalDamaged: 0,
+                totalRevenue: 0
+              };
+            }
+            
+            areaMap[area].totalSold += item.quantity_sold;
+            areaMap[area].totalDamaged += item.quantity_damaged_at_location;
+            areaMap[area].totalRevenue += item.quantity_sold * (item.price_at_distribution || 0);
+
+            summaryData.totalSold += item.quantity_sold;
+            summaryData.totalDamaged += item.quantity_damaged_at_location;
+            summaryData.totalRevenue += item.quantity_sold * (item.price_at_distribution || 0);
+          });
+        });
+
+        processedData = Object.values(areaMap);
+      }
+
+      setData(processedData);
+      setSummary(summaryData);
+
+    } catch (error) {
+      console.error('Error fetching sales data:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const exportToPDF = () => {
+    const doc = new jsPDF();
+    
+    doc.setFontSize(16);
+    doc.text('LAPORAN PENJUALAN & KERUSAKAN', 105, 15, { align: 'center' });
+    
+    doc.setFontSize(10);
+    let dateRange = 'Semua Tanggal';
+    if (filters.startDate && filters.endDate) {
+      dateRange = `${formatDate(filters.startDate)} - ${formatDate(filters.endDate)}`;
+    }
+    doc.text(`Periode: ${dateRange} | View By: ${filters.viewBy === 'cake' ? 'Kue' : 'Area'}`, 105, 22, { align: 'center' });
+
+    // Summary
+    doc.text(`Total Terjual: ${summary.totalSold.toLocaleString()} pcs | Total Rusak: ${summary.totalDamaged.toLocaleString()} pcs | Total Revenue: ${formatIDR(summary.totalRevenue)}`, 14, 32);
+
+    // Table
+    const tableData = data.map(item => [
+      item.name,
+      item.totalSold.toLocaleString(),
+      item.totalDamaged.toLocaleString(),
+      `${((item.totalDamaged / (item.totalSold + item.totalDamaged)) * 100).toFixed(1)}%`,
+      formatIDR(item.totalRevenue)
+    ]);
+
+    const headers = filters.viewBy === 'cake' 
+      ? ['Nama Kue', 'Terjual', 'Rusak', '% Rusak', 'Total Revenue']
+      : ['Area', 'Terjual', 'Rusak', '% Rusak', 'Total Revenue'];
+
+    doc.autoTable({
+      startY: 40,
+      head: [headers],
+      body: tableData,
+      styles: { fontSize: 8 },
+      headStyles: { fillColor: [16, 185, 129] }
+    });
+
+    const pageCount = doc.internal.getNumberOfPages();
+    for (let i = 1; i <= pageCount; i++) {
+      doc.setPage(i);
+      doc.setFontSize(8);
+      doc.text(`Generated on ${new Date().toLocaleDateString('id-ID')} - Page ${i} of ${pageCount}`, 105, doc.internal.pageSize.height - 10, { align: 'center' });
+    }
+
+    doc.save(`laporan-penjualan-${new Date().toISOString().split('T')[0]}.pdf`);
+  };
+
+  useEffect(() => {
+    fetchSalesData();
+  }, [filters]);
+
+  return (
+    <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+      <div className="p-6 border-b border-gray-200">
+        <div className="flex justify-between items-center mb-4">
+          <h2 className="text-xl font-semibold text-gray-800 flex items-center">
+            <TrendingUp className="mr-2 text-green-600" size={24} />
+            Laporan Penjualan & Kerusakan
+          </h2>
+          <button
+            onClick={exportToPDF}
+            disabled={loading || data.length === 0}
+            className="flex items-center px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <Download size={16} className="mr-2" />
+            Export PDF
+          </button>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Dari Tanggal</label>
+            <input
+              type="date"
+              value={filters.startDate}
+              onChange={(e) => setFilters(prev => ({ ...prev, startDate: e.target.value }))}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Sampai Tanggal</label>
+            <input
+              type="date"
+              value={filters.endDate}
+              onChange={(e) => setFilters(prev => ({ ...prev, endDate: e.target.value }))}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Tampilkan Berdasarkan</label>
+            <select
+              value={filters.viewBy}
+              onChange={(e) => setFilters(prev => ({ ...prev, viewBy: e.target.value }))}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
+            >
+              <option value="cake">Nama Kue</option>
+              <option value="area">Area</option>
+            </select>
           </div>
         </div>
+
+        {/* Summary Cards */}
+        {data.length > 0 && (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6">
+            <div className="bg-green-50 p-4 rounded-lg border border-green-200">
+              <div className="text-green-800 font-semibold">Total Terjual</div>
+              <div className="text-2xl font-bold text-green-900">{summary.totalSold.toLocaleString()} pcs</div>
+            </div>
+            <div className="bg-red-50 p-4 rounded-lg border border-red-200">
+              <div className="text-red-800 font-semibold">Total Rusak</div>
+              <div className="text-2xl font-bold text-red-900">{summary.totalDamaged.toLocaleString()} pcs</div>
+            </div>
+            <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
+              <div className="text-blue-800 font-semibold">Total Revenue</div>
+              <div className="text-2xl font-bold text-blue-900">{formatIDR(summary.totalRevenue)}</div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className="p-6">
+        {loading ? (
+          <div className="text-center py-8">
+            <div className="text-gray-500">Memuat data penjualan...</div>
+          </div>
+        ) : data.length === 0 ? (
+          <div className="text-center py-8">
+            <TrendingUp size={48} className="mx-auto text-gray-400 mb-2" />
+            <div className="text-gray-500">Tidak ada data penjualan</div>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm text-left">
+              <thead className="bg-gray-50 text-gray-700">
+                <tr>
+                  <th className="px-4 py-3 font-medium">
+                    {filters.viewBy === 'cake' ? 'Nama Kue' : 'Area'}
+                  </th>
+                  <th className="px-4 py-3 font-medium text-right">Terjual</th>
+                  <th className="px-4 py-3 font-medium text-right">Rusak</th>
+                  <th className="px-4 py-3 font-medium text-right">% Rusak</th>
+                  <th className="px-4 py-3 font-medium text-right">Total Revenue</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-200">
+                {data.map((item, index) => (
+                  <tr key={index} className="hover:bg-gray-50">
+                    <td className="px-4 py-3 font-medium">{item.name}</td>
+                    <td className="px-4 py-3 text-right text-green-600 font-medium">
+                      {item.totalSold.toLocaleString()}
+                    </td>
+                    <td className="px-4 py-3 text-right text-red-600">
+                      {item.totalDamaged.toLocaleString()}
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                        (item.totalDamaged / (item.totalSold + item.totalDamaged)) > 0.1 
+                          ? 'bg-red-100 text-red-800' 
+                          : 'bg-green-100 text-green-800'
+                      }`}>
+                        {((item.totalDamaged / (item.totalSold + item.totalDamaged)) * 100).toFixed(1)}%
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-right font-medium">
+                      {formatIDR(item.totalRevenue)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// Main Reports Component dengan Tab
+export default function Reports() {
+  const [activeTab, setActiveTab] = useState('production');
+
+  const tabs = [
+    { id: 'production', name: 'Produksi', component: <ProductionReport /> },
+    { id: 'distribution', name: 'Distribusi', component: <DistributionReport /> },
+    { id: 'sales', name: 'Penjualan & Kerusakan', component: <SalesReport /> }
+  ];
+
+  return (
+    <div className="min-h-screen bg-gray-50 p-6">
+      <div className="max-w-7xl mx-auto">
+        <div className="mb-6">
+          <h1 className="text-3xl font-bold text-gray-900">Laporan</h1>
+          <p className="text-gray-600 mt-2">Kelola dan ekspor laporan produksi, distribusi, dan penjualan</p>
+        </div>
+
+        {/* Tabs */}
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 mb-6">
+          <div className="border-b border-gray-200">
+            <nav className="flex -mb-px">
+              {tabs.map((tab) => (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id)}
+                  className={`py-4 px-6 font-medium text-sm border-b-2 transition-colors ${
+                    activeTab === tab.id
+                      ? 'border-blue-500 text-blue-600'
+                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  }`}
+                >
+                  {tab.name}
+                </button>
+              ))}
+            </nav>
+          </div>
+        </div>
+
+        {/* Active Tab Content */}
+        {tabs.find(tab => tab.id === activeTab)?.component}
       </div>
     </div>
   );
