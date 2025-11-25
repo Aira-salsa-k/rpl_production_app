@@ -4,7 +4,7 @@ export default function Navbar({ onLogout }) {
   const location = useLocation();
 
   const navLinks = [
-    { name: 'Dashboard', path: '/dashboard' },
+    { name: 'Dashboard', path: '/dashboardnew' },
     { name: 'Cakes', path: '/cakes' },
     { name: 'Ingredients', path: '/ingredients' },
     { name: 'Recipes', path: '/recipes' },
@@ -15,7 +15,7 @@ export default function Navbar({ onLogout }) {
   ];
 
   return (
-    <nav className="bg-indigo-600 text-white">
+    <nav className="bg-bakery-secondary text-white">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
           <div className="flex items-center">

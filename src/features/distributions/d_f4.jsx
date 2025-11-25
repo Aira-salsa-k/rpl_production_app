@@ -5,8 +5,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { 
   MapPin, Plus, Store, Trash2, Calendar, Filter, Calculator, 
   RefreshCw, Save, ArrowRightCircle, Power, PowerOff, Edit2, 
-  X, Check, PlusCircle, ChevronDown, ChevronUp, Package,
-  History, DollarSign
+  X, Check, PlusCircle, ChevronDown, ChevronUp, Package 
 } from 'lucide-react'; 
 
 const ROUTES = ['Arso 1', 'Arso 2', 'Arso Kota', 'Koya Barat', 'Koya Timur', 'Nimbokrang', 'Sentani'];
@@ -46,7 +45,6 @@ export default function Distributions() {
   const [editingDistId, setEditingDistId] = useState(null);
   const [editItems, setEditItems] = useState([]);
   const [expandedCards, setExpandedCards] = useState(new Set());
-  const [expandedReconcileHistory, setExpandedReconcileHistory] = useState(new Set());
 
   const [loading, setLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -102,39 +100,6 @@ export default function Distributions() {
     }
   };
 
-  // --- GROUP DISTRIBUTIONS BY PARENT ---
-  const groupDistributionsByParent = () => {
-    const grouped = {};
-    
-    distributions.forEach(dist => {
-      // Cari parent distribution (yang memiliki withdrawal_date di items-nya)
-      const hasWithdrawnItems = dist.distribution_items.some(item => item.withdrawal_date);
-      
-      if (hasWithdrawnItems) {
-        // Ini adalah distribution yang sudah disetor, cari parent-nya
-        const parentDate = new Date(dist.distribution_date);
-        const parentKey = `${dist.kiosk_id}-${parentDate.toISOString().split('T')[0]}`;
-        
-        if (!grouped[parentKey]) {
-          grouped[parentKey] = {
-            parent: dist,
-            reconciles: []
-          };
-        }
-        grouped[parentKey].reconciles.push(dist);
-      } else {
-        // Ini adalah distribution aktif (belum disetor)
-        const key = `${dist.kiosk_id}-${dist.id}`;
-        grouped[key] = {
-          parent: dist,
-          reconciles: []
-        };
-      }
-    });
-
-    return Object.values(grouped);
-  };
-
   // --- UPDATE TEMPLATE FUNCTION ---
   const updateKioskTemplate = async (kioskId, newItems) => {
     if (!kioskId || !newItems || newItems.length === 0) {
@@ -147,6 +112,7 @@ export default function Distributions() {
     try {
       console.log('Updating template for kiosk:', kioskId, 'with items:', newItems);
 
+      // Hapus template lama
       const { error: deleteError } = await supabase
         .from('kiosk_consignment_templates')
         .delete()
@@ -154,6 +120,7 @@ export default function Distributions() {
 
       if (deleteError) throw deleteError;
 
+      // Buat template baru
       const templatePayload = newItems.map(item => ({
         kiosk_id: kioskId,
         cake_id: item.cake_id,
@@ -237,6 +204,7 @@ export default function Distributions() {
 
       if (error) throw error;
 
+      // Update template setelah edit
       const editedDist = distributions.find(d => d.id === editingDistId);
       if (editedDist && editedDist.kiosk_id) {
         await updateKioskTemplate(editedDist.kiosk_id, editItems);
@@ -322,6 +290,7 @@ export default function Distributions() {
 
       if (error) throw error;
 
+      // Update template setelah reconcile
       const templateItems = reconcileData.map(rd => {
         const item = dist.distribution_items.find(i => i.id === rd.item_id);
         return {
@@ -378,6 +347,7 @@ export default function Distributions() {
 
       if (error) throw error;
 
+      // Update template
       await updateKioskTemplate(dist.kiosk_id, [{
         cake_id: item.cake_id.id,
         quantity: nextRestockQty,
@@ -398,6 +368,7 @@ export default function Distributions() {
     if (selectedKioskId) {
       const kiosk = kiosks.find(k => k.id === selectedKioskId);
       
+      // 1. Ambil dari template
       const templateItems = kiosk?.kiosk_consignment_templates?.map(t => {
         const masterCake = cakes.find(c => c.id === t.cake_id);
         return {
@@ -411,6 +382,7 @@ export default function Distributions() {
         };
       }) || [];
 
+      // 2. Ambil dari distribusi aktif terakhir
       const latestActiveDistribution = distributions
         .filter(d => 
           d.kiosk_id === selectedKioskId && 
@@ -430,6 +402,7 @@ export default function Distributions() {
           source: 'history'
         })) || [];
 
+      // 3. Gabungkan: prioritaskan history
       const combinedItems = [];
       const usedCakeIds = new Set();
 
@@ -474,6 +447,7 @@ export default function Distributions() {
 
       if (error) throw error;
 
+      // Update template
       await updateKioskTemplate(selectedKioskId, items);
 
       alert('Distribusi baru tercatat dan template diperbarui!');
@@ -499,42 +473,7 @@ export default function Distributions() {
     setExpandedCards(newExpanded);
   };
 
-  // --- TOGGLE RECONCILE HISTORY EXPAND ---
-  const toggleReconcileHistoryExpand = (distId) => {
-    const newExpanded = new Set(expandedReconcileHistory);
-    if (newExpanded.has(distId)) {
-      newExpanded.delete(distId);
-    } else {
-      newExpanded.add(distId);
-    }
-    setExpandedReconcileHistory(newExpanded);
-  };
-
-  // --- CALCULATE TOTAL BILL FOR DISTRIBUTION ---
-  const calculateTotalBill = (dist) => {
-    return dist.distribution_items.reduce((acc, item) => 
-      acc + (item.quantity_sold * item.price_at_distribution), 0
-    );
-  };
-
-  // --- CALCULATE SUMMARY FOR PARENT DISTRIBUTION ---
-  const calculateParentSummary = (parent, reconciles) => {
-    const totalBill = calculateTotalBill(parent);
-    const totalReconcileBill = reconciles.reduce((acc, rec) => acc + calculateTotalBill(rec), 0);
-    const totalItems = parent.distribution_items.length;
-    const activeItems = parent.distribution_items.filter(item => !item.withdrawal_date).length;
-    const completedItems = parent.distribution_items.filter(item => item.withdrawal_date).length;
-    
-    return {
-      totalBill: totalBill + totalReconcileBill,
-      totalItems,
-      activeItems,
-      completedItems,
-      hasReconciles: reconciles.length > 0
-    };
-  };
-
-  // --- KIOSK MANAGEMENT (sama seperti sebelumnya) ---
+  // --- KIOSK MANAGEMENT ---
   const handleAddKioskWithTemplate = async (e) => {
     e.preventDefault();
     if(!newKiosk.area) return alert("Harap pilih Area/Rute!");
@@ -626,15 +565,12 @@ export default function Distributions() {
   };
 
   // --- FILTERS ---
-  const filteredDistributions = groupDistributionsByParent().filter(group => {
-    const dist = group.parent;
-    if (filterArea !== 'Semua' && dist.kiosks?.area !== filterArea) return false;
+  const filteredHistory = distributions.filter(d => {
+    if (filterArea !== 'Semua' && d.kiosks?.area !== filterArea) return false;
     if (filterMonth) {
-      const distDate = dist.distribution_date.substring(0, 7);
+      const distDate = d.distribution_date.substring(0, 7);
       let match = distDate === filterMonth;
-      if (!match && group.reconciles.some(rec => 
-        rec.distribution_items.some(item => item.withdrawal_date && item.withdrawal_date.substring(0, 7) === filterMonth)
-      )) match = true;
+      if (!match && d.distribution_items.some(item => item.withdrawal_date && item.withdrawal_date.substring(0, 7) === filterMonth)) match = true;
       if (!match) return false;
     }
     return true;
@@ -679,7 +615,6 @@ export default function Distributions() {
                   </h2>
                 </div>
                 <form onSubmit={handleCreateDistribution} className="space-y-4">
-                  {/* Form inputs sama seperti sebelumnya */}
                   <div>
                     <label className="block text-xs font-semibold text-gray-500 uppercase mb-1">1. Area</label>
                     <select 
@@ -807,14 +742,13 @@ export default function Distributions() {
                 </div>
               </div>
 
-              {filteredDistributions.map((group) => {
-                const dist = group.parent;
-                const reconciles = group.reconciles;
+              {filteredHistory.map((dist) => {
+                const totalBill = dist.distribution_items.reduce((acc, item) => acc + (item.quantity_sold * item.price_at_distribution), 0);
+                const isFullyReconciled = dist.distribution_items.every(item => item.withdrawal_date);
                 const isEditing = editingDistId === dist.id;
                 const isExpanded = expandedCards.has(dist.id);
-                const isReconcileExpanded = expandedReconcileHistory.has(dist.id);
-                const summary = calculateParentSummary(dist, reconciles);
-                const isFullyReconciled = dist.distribution_items.every(item => item.withdrawal_date);
+                const totalItems = dist.distribution_items.length;
+                const activeItems = dist.distribution_items.filter(item => !item.withdrawal_date).length;
 
                 return (
                   <div key={dist.id} className={`bg-white border rounded-xl overflow-hidden shadow-sm transition-all ${
@@ -823,7 +757,7 @@ export default function Distributions() {
                     'border-l-4 border-l-yellow-400 border-gray-200'
                   }`}>
                     
-                    {/* CARD HEADER */}
+                    {/* CARD HEADER - ALWAYS VISIBLE */}
                     <div className={`px-6 py-4 border-b ${
                       isFullyReconciled ? 'bg-green-50' : 
                       !dist.kiosks?.is_active ? 'bg-red-50' : 
@@ -844,11 +778,6 @@ export default function Distributions() {
                                 NON-AKTIF
                               </span>
                             )}
-                            {summary.hasReconciles && (
-                              <span className="bg-blue-100 text-blue-600 text-[10px] font-bold px-2 py-0.5 rounded">
-                                +{reconciles.length} Setoran
-                              </span>
-                            )}
                           </div>
                           
                           <div className="flex flex-wrap items-center gap-4 text-sm text-gray-500">
@@ -858,14 +787,8 @@ export default function Distributions() {
                             </span>
                             <span className="flex items-center gap-1">
                               <Package size={14}/>
-                              {summary.totalItems} jenis kue • {summary.activeItems} aktif • {summary.completedItems} selesai
+                              {totalItems} jenis kue • {activeItems} aktif
                             </span>
-                            {summary.hasReconciles && (
-                              <span className="flex items-center gap-1">
-                                <DollarSign size={14}/>
-                                Total: {formatRupiah(summary.totalBill)}
-                              </span>
-                            )}
                           </div>
                         </div>
 
@@ -918,14 +841,14 @@ export default function Distributions() {
                               !dist.kiosks?.is_active ? 'text-red-700' :
                               'text-yellow-700'
                             }`}>
-                              {isFullyReconciled ? 'Selesai' : 'Status'}
+                              {isFullyReconciled ? 'Total' : 'Status'}
                             </div>
                             <div className={`text-sm font-bold ${
                               isFullyReconciled ? 'text-green-700' :
                               !dist.kiosks?.is_active ? 'text-red-700' :
                               'text-yellow-600'
                             }`}>
-                              {isFullyReconciled ? formatRupiah(summary.totalBill) : 
+                              {isFullyReconciled ? formatRupiah(totalBill) : 
                                !dist.kiosks?.is_active ? 'Non-Aktif' : 'Aktif'}
                             </div>
                           </div>
@@ -941,212 +864,122 @@ export default function Distributions() {
                       </div>
                     </div>
 
-                    {/* EXPANDABLE CONTENT - DATA PENITIPAN */}
+                    {/* EXPANDABLE CONTENT */}
                     {isExpanded && (
-                      <div className="border-b">
-                        <div className="p-4">
-                          <h4 className="font-semibold text-gray-800 mb-3 flex items-center gap-2">
-                            <Package size={16} />
-                            Data Penitipan
-                          </h4>
-                          
-                          {isEditing ? (
-                            // EDIT MODE
-                            <div className="bg-yellow-50/50 p-4 rounded-lg">
-                              <table className="w-full text-sm">
-                                <thead className="text-gray-500 border-b border-yellow-200">
-                                  <tr>
-                                    <th className="px-4 py-2 text-left">Jenis Kue</th>
-                                    <th className="px-4 py-2 text-center">Jumlah Titip</th>
-                                    <th className="px-4 py-2 text-center">Aksi</th>
-                                  </tr>
-                                </thead>
-                                <tbody>
-                                  {editItems.map((item, idx) => (
-                                    <tr key={idx} className="border-b border-yellow-100 bg-white">
-                                      <td className="px-4 py-2">
-                                        {item.id ? (
-                                          <span className="font-bold text-gray-700">{item.cake_name}</span>
-                                        ) : (
-                                          <select 
-                                            value={item.cake_id} 
-                                            onChange={(e) => handleEditItemChange(idx, 'cake_id', e.target.value)}
-                                            className="w-full border rounded px-2 py-1 text-sm"
-                                          >
-                                            <option value="">-- Pilih Kue --</option>
-                                            {cakes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                                          </select>
-                                        )}
-                                      </td>
-                                      <td className="px-4 py-2 text-center">
-                                        <input 
-                                          type="number" 
-                                          value={item.quantity_sent}
-                                          onChange={(e) => handleEditItemChange(idx, 'quantity_sent', e.target.value)}
-                                          min="0"
-                                          className="w-20 text-center border border-yellow-300 rounded py-1 px-2 font-bold text-indigo-700 focus:ring-2 focus:ring-yellow-400 outline-none"
-                                        />
-                                      </td>
-                                      <td className="px-4 py-2 text-center">
-                                        <button 
-                                          onClick={() => handleRemoveEditItem(idx)}
-                                          className="text-red-500 hover:bg-red-50 p-1 rounded transition-colors"
+                      <div className="overflow-x-auto">
+                        {isEditing ? (
+                          // EDIT MODE
+                          <div className="p-4 bg-yellow-50/50">
+                            <table className="w-full text-sm">
+                              <thead className="text-gray-500 border-b border-yellow-200">
+                                <tr>
+                                  <th className="px-4 py-2 text-left">Jenis Kue</th>
+                                  <th className="px-4 py-2 text-center">Jumlah Titip</th>
+                                  <th className="px-4 py-2 text-center">Aksi</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {editItems.map((item, idx) => (
+                                  <tr key={idx} className="border-b border-yellow-100 bg-white">
+                                    <td className="px-4 py-2">
+                                      {item.id ? (
+                                        <span className="font-bold text-gray-700">{item.cake_name}</span>
+                                      ) : (
+                                        <select 
+                                          value={item.cake_id} 
+                                          onChange={(e) => handleEditItemChange(idx, 'cake_id', e.target.value)}
+                                          className="w-full border rounded px-2 py-1 text-sm"
                                         >
-                                          <Trash2 size={16}/>
-                                        </button>
-                                      </td>
-                                    </tr>
-                                  ))}
-                                </tbody>
-                              </table>
-                              <button 
-                                onClick={handleAddEditItem} 
-                                className="mt-3 flex items-center gap-2 text-indigo-600 font-bold text-xs hover:text-indigo-800"
-                              >
-                                <PlusCircle size={16}/> Tambah Jenis Kue Lain
-                              </button>
-                            </div>
-                          ) : (
-                            // VIEW MODE - DATA PENITIPAN
-                            <div className="overflow-x-auto">
-                              <table className="w-full text-sm text-left">
-                                <thead className="bg-white text-gray-500 border-b">
-                                  <tr>
-                                    <th className="px-5 py-3 font-medium">Item Kue</th>
-                                    <th className="px-5 py-3 font-medium text-center bg-gray-50">Harga @</th>
-                                    <th className="px-5 py-3 font-medium text-center bg-indigo-50 text-indigo-700">Titip</th>
-                                    <th className="px-5 py-3 font-medium text-center text-green-700">Laku</th>
-                                    <th className="px-5 py-3 font-medium text-center text-red-600">Rusak</th>
-                                    <th className="px-5 py-3 font-medium text-right">Tagihan</th>
-                                    {/* <th className="px-5 py-3 font-medium text-center">Aksi</th> */}
+                                          <option value="">-- Pilih Kue --</option>
+                                          {cakes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                                        </select>
+                                      )}
+                                    </td>
+                                    <td className="px-4 py-2 text-center">
+                                      <input 
+                                        type="number" 
+                                        value={item.quantity_sent}
+                                        onChange={(e) => handleEditItemChange(idx, 'quantity_sent', e.target.value)}
+                                        min="0"
+                                        className="w-20 text-center border border-yellow-300 rounded py-1 px-2 font-bold text-indigo-700 focus:ring-2 focus:ring-yellow-400 outline-none"
+                                      />
+                                    </td>
+                                    <td className="px-4 py-2 text-center">
+                                      <button 
+                                        onClick={() => handleRemoveEditItem(idx)}
+                                        className="text-red-500 hover:bg-red-50 p-1 rounded transition-colors"
+                                      >
+                                        <Trash2 size={16}/>
+                                      </button>
+                                    </td>
                                   </tr>
-                                </thead>
-                                <tbody className="divide-y divide-gray-100">
-                                  {dist.distribution_items.map((item) => {
-                                    const itemBill = item.quantity_sold * item.price_at_distribution;
-                                    const hasWithdrawn = !!item.withdrawal_date;
-                                    return (
-                                      <tr key={item.id} className="hover:bg-gray-50">
-                                        <td className="px-5 py-3">
-                                          <div className="font-medium text-gray-900">{item.cake_id?.name}</div>
-                                        </td>
-                                        <td className="px-5 py-3 text-center text-gray-500 bg-gray-50 text-xs">
-                                          {formatRupiah(item.price_at_distribution)}
-                                        </td>
-                                        <td className="px-5 py-3 text-center font-bold bg-indigo-50 text-indigo-800">
-                                          {item.quantity_sent}
-                                        </td>
-                                        <td className="px-5 py-3 text-center">
-                                          {hasWithdrawn ? <span className="font-bold text-green-700">{item.quantity_sold}</span> : '-'}
-                                        </td>
-                                        <td className="px-5 py-3 text-center text-red-500 font-medium">
-                                          {hasWithdrawn ? item.quantity_damaged_at_location : '-'}
-                                        </td>
-                                        <td className="px-5 py-3 text-right font-bold text-gray-800">
-                                          {hasWithdrawn ? formatRupiah(itemBill) : '-'}
-                                        </td>
-                                        {/* <td className="px-5 py-3 text-center">
-                                          {!hasWithdrawn && dist.kiosks?.is_active ? (
-                                            <button 
-                                              onClick={() => handleReconcileAndRestock(item, dist)} 
-                                              className="bg-indigo-600 text-white px-3 py-1.5 rounded shadow-sm hover:bg-indigo-700 text-xs font-medium flex items-center gap-1 mx-auto transition-all transform hover:scale-105"
-                                            >
-                                              <RefreshCw size={14}/> Setor
-                                            </button>
-                                          ) : (
-                                            <span className="text-xs text-gray-400 flex items-center justify-center gap-1">
-                                              <ArrowRightCircle size={14}/> Selesai
-                                            </span>
-                                          )}
-                                        </td> */}
-                                      </tr>
-                                    );
-                                  })}
-                                </tbody>
-                              </table>
-                            </div>
-                          )}
-                        </div>
-
-                        {/* RIWAYAT SETORAN */}
-                        {reconciles.length > 0 && (
-                          <div className="border-t border-gray-200">
-                            <button
-                              onClick={() => toggleReconcileHistoryExpand(dist.id)}
-                              className="w-full px-6 py-3 bg-gray-50 hover:bg-gray-100 transition-colors text-left flex items-center justify-between"
-                            >
-                              <div className="flex items-center gap-2">
-                                <History size={16} className="text-blue-600" />
-                                <span className="font-semibold text-gray-800">
-                                  Riwayat Setoran ({reconciles.length})
-                                </span>
-                              </div>
-                              <ChevronDown 
-                                size={16} 
-                                className={`text-gray-400 transition-transform ${
-                                  isReconcileExpanded ? 'rotate-180' : ''
-                                }`}
-                              />
-                            </button>
-                            
-                            {isReconcileExpanded && (
-                              <div className="p-4 bg-blue-50/30">
-                                {reconciles.map((reconcile, index) => (
-                                  <div key={reconcile.id} className="mb-4 last:mb-0">
-                                    <div className="flex items-center gap-2 mb-2">
-                                      <span className="text-sm font-medium text-gray-700">
-                                        Setoran {index + 1}
-                                      </span>
-                                      <span className="text-xs text-gray-500">
-                                        {new Date(reconcile.distribution_date).toLocaleDateString('id-ID')}
-                                      </span>
-                                      <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded">
-                                        Total: {formatRupiah(calculateTotalBill(reconcile))}
-                                      </span>
-                                    </div>
-                                    
-                                    <div className="bg-white rounded-lg border border-blue-200 overflow-hidden">
-                                      <table className="w-full text-sm">
-                                        <thead className="bg-blue-50 text-blue-900 border-b border-blue-200">
-                                          <tr>
-                                            <th className="px-4 py-2 text-left font-medium">Kue</th>
-                                            <th className="px-4 py-2 text-center font-medium">Titip</th>
-                                            <th className="px-4 py-2 text-center font-medium">Laku</th>
-                                            <th className="px-4 py-2 text-center font-medium">Rusak</th>
-                                            <th className="px-4 py-2 text-right font-medium">Tagihan</th>
-                                          </tr>
-                                        </thead>
-                                        <tbody>
-                                          {reconcile.distribution_items.map((item) => {
-                                            const itemBill = item.quantity_sold * item.price_at_distribution;
-                                            return (
-                                              <tr key={item.id} className="border-b border-blue-100 last:border-b-0">
-                                                <td className="px-4 py-2">
-                                                  <div className="font-medium text-gray-900">{item.cake_id?.name}</div>
-                                                </td>
-                                                <td className="px-4 py-2 text-center text-blue-700 font-semibold">
-                                                  {item.quantity_sent}
-                                                </td>
-                                                <td className="px-4 py-2 text-center text-green-600 font-semibold">
-                                                  {item.quantity_sold}
-                                                </td>
-                                                <td className="px-4 py-2 text-center text-red-500">
-                                                  {item.quantity_damaged_at_location}
-                                                </td>
-                                                <td className="px-4 py-2 text-right font-semibold text-gray-800">
-                                                  {formatRupiah(itemBill)}
-                                                </td>
-                                              </tr>
-                                            );
-                                          })}
-                                        </tbody>
-                                      </table>
-                                    </div>
-                                  </div>
                                 ))}
-                              </div>
-                            )}
+                              </tbody>
+                            </table>
+                            <button 
+                              onClick={handleAddEditItem} 
+                              className="mt-3 flex items-center gap-2 text-indigo-600 font-bold text-xs hover:text-indigo-800"
+                            >
+                              <PlusCircle size={16}/> Tambah Jenis Kue Lain
+                            </button>
                           </div>
+                        ) : (
+                          // VIEW MODE
+                          <table className="w-full text-sm text-left">
+                            <thead className="bg-white text-gray-500 border-b">
+                              <tr>
+                                <th className="px-5 py-3 font-medium">Item Kue</th>
+                                <th className="px-5 py-3 font-medium text-center bg-gray-50">Harga @</th>
+                                <th className="px-5 py-3 font-medium text-center bg-indigo-50 text-indigo-700">Titip</th>
+                                <th className="px-5 py-3 font-medium text-center text-green-700">Laku</th>
+                                <th className="px-5 py-3 font-medium text-center text-red-600">Rusak</th>
+                                <th className="px-5 py-3 font-medium text-right">Tagihan</th>
+                                <th className="px-5 py-3 font-medium text-center">Aksi</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-100">
+                              {dist.distribution_items.map((item) => {
+                                const itemBill = item.quantity_sold * item.price_at_distribution;
+                                const hasWithdrawn = !!item.withdrawal_date;
+                                return (
+                                  <tr key={item.id} className="hover:bg-gray-50">
+                                    <td className="px-5 py-3">
+                                      <div className="font-medium text-gray-900">{item.cake_id?.name}</div>
+                                    </td>
+                                    <td className="px-5 py-3 text-center text-gray-500 bg-gray-50 text-xs">
+                                      {formatRupiah(item.price_at_distribution)}
+                                    </td>
+                                    <td className="px-5 py-3 text-center font-bold bg-indigo-50 text-indigo-800">
+                                      {item.quantity_sent}
+                                    </td>
+                                    <td className="px-5 py-3 text-center">
+                                      {hasWithdrawn ? <span className="font-bold text-green-700">{item.quantity_sold}</span> : '-'}
+                                    </td>
+                                    <td className="px-5 py-3 text-center text-red-500 font-medium">
+                                      {hasWithdrawn ? item.quantity_damaged_at_location : '-'}
+                                    </td>
+                                    <td className="px-5 py-3 text-right font-bold text-gray-800">
+                                      {hasWithdrawn ? formatRupiah(itemBill) : '-'}
+                                    </td>
+                                    <td className="px-5 py-3 text-center">
+                                      {!hasWithdrawn && dist.kiosks?.is_active ? (
+                                        <button 
+                                          onClick={() => handleReconcileAndRestock(item, dist)} 
+                                          className="bg-indigo-600 text-white px-3 py-1.5 rounded shadow-sm hover:bg-indigo-700 text-xs font-medium flex items-center gap-1 mx-auto transition-all transform hover:scale-105"
+                                        >
+                                          <RefreshCw size={14}/> Setor
+                                        </button>
+                                      ) : (
+                                        <span className="text-xs text-gray-400 flex items-center justify-center gap-1">
+                                          <ArrowRightCircle size={14}/> Selesai
+                                        </span>
+                                      )}
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
                         )}
                       </div>
                     )}
@@ -1154,7 +987,7 @@ export default function Distributions() {
                 );
               })}
               
-              {filteredDistributions.length === 0 && (
+              {filteredHistory.length === 0 && (
                 <div className="text-center py-16 bg-white rounded-xl border border-dashed border-gray-300">
                   <Calculator className="mx-auto text-gray-200 mb-3" size={48}/>
                   <p className="text-gray-400 font-medium">Tidak ada data.</p>
@@ -1164,16 +997,15 @@ export default function Distributions() {
           </div>
         )}
 
-        {/* KIOSKS TAB - SAMA SEPERTI SEBELUMNYA */}
+        {/* KIOSKS TAB */}
         {activeTab === 'kiosks' && (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-fadeIn">
-            {/* Form Tambah Mitra - sama seperti sebelumnya */}
+            {/* ADD KIOSK FORM */}
             <div className="bg-white p-6 rounded-xl shadow border border-gray-200 h-fit">
               <h2 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
                 <Plus size={18} className="text-indigo-600" /> Tambah Mitra Baru
               </h2>
               <form onSubmit={handleAddKioskWithTemplate} className="space-y-4">
-                {/* Form inputs sama seperti sebelumnya */}
                 <div>
                   <label className="text-xs font-semibold text-gray-500 uppercase">Nama Kios</label>
                   <input 
@@ -1267,7 +1099,7 @@ export default function Distributions() {
               </form>
             </div>
 
-            {/* KIOSKS LIST - sama seperti sebelumnya */}
+            {/* KIOSKS LIST */}
             <div className="lg:col-span-2 space-y-4">
               {ROUTES.map(area => {
                 const areaKiosks = kiosks.filter(k => k.area === area);
@@ -1287,6 +1119,7 @@ export default function Distributions() {
                           k.is_active ? 'bg-white hover:border-indigo-400' : 'bg-gray-100 border-gray-200 opacity-75'
                         }`}>
                           
+                          {/* STATUS BADGE */}
                           <div className="absolute top-3 right-3 flex gap-2">
                             {!k.is_active && (
                               <span className="bg-red-100 text-red-600 text-[10px] font-bold px-2 py-0.5 rounded">
@@ -1319,6 +1152,7 @@ export default function Distributions() {
                             )}
                           </div>
                           
+                          {/* TEMPLATE INFO */}
                           {k.kiosk_consignment_templates?.length > 0 ? (
                             <div className="mt-2 text-[10px] text-gray-500 bg-gray-50 p-2 rounded">
                               <span className="font-semibold block mb-1">Titipan Rutin:</span>

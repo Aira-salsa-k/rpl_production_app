@@ -1,1 +1,8 @@
 @import "tailwindcss";
+:root {
+  --primary-bakery: #b48e6c;   /* Coklat lembut */
+  --secondary-bakery: #f9f5ed; /* Krem lembut */
+  --light-bakery: #ffffff;     /* Putih */
+  --dark-bakery: #4a3e30;      /* Coklat gelap untuk teks */
+  --muted-bakery: #8d8376;     /* Abu/coklat */
+}

@@ -841,11 +841,11 @@ export default function Reports() {
             </div>
             
             <div className="mt-6">
-              <h3 className="text-lg font-medium text-gray-900 mb-2">Notes</h3>
+              {/* <h3 className="text-lg font-medium text-gray-900 mb-2">Notes</h3>
               <p className="text-gray-600">
                 Laba Kotor (Gross Profit) dihitung dari Total Pendapatan (dari item terjual di modul distribusi) dikurangi Total Biaya Produksi.
                 Laporan ini belum termasuk biaya operasional lain dan kerugian dari barang rusak (yang masih dihitung sebagai item, bukan rupiah).
-              </p>
+              </p> */}
             </div>
           </div>
         </div>
